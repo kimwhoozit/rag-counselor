@@ -566,10 +566,11 @@ with tab2:
             st.subheader("☁️ 구글 드라이브 동기화 대시보드")
             st.write("구글 클라우드 서비스 계정 키(JSON)와 동기화할 폴더 ID를 사용해 클라우드 드라이브와 실시간 싱크를 맞춥니다.")
             
-            # Google Drive configuration inputs - Auto Clean Folder ID / URL
+            # Google Drive configuration inputs - Auto Clean Folder ID / URL (Supports Cloud Environment Variables)
+            env_folder_id = os.environ.get("gdrive_folder_id", "")
             raw_folder_id = st.text_input(
                 "구글 드라이브 폴더 ID (Folder ID):",
-                value=st.session_state.get("gdrive_folder_id", ""),
+                value=st.session_state.get("gdrive_folder_id", env_folder_id),
                 help="구글 드라이브 폴더 전체 URL 또는 맨 뒷부분의 폴더 ID 문자열을 입력하세요."
             )
             if raw_folder_id:
@@ -586,7 +587,7 @@ with tab2:
                     st.session_state.gdrive_folder_id = cleaned_id
                     st.rerun()
             
-            gdrive_folder_id = st.session_state.get("gdrive_folder_id", "")
+            gdrive_folder_id = st.session_state.get("gdrive_folder_id", env_folder_id)
                 
             uploaded_cred = st.file_uploader(
                 "구글 서비스 계정 키 (.json 파일) 등록:",
@@ -601,11 +602,14 @@ with tab2:
                 st.toast("✅ 구글 서비스 계정 자격증명이 저장되었습니다.")
                 
             # Derived Service Account info
-            has_credentials = os.path.exists(GD_CREDS_FILE)
+            has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ
             if has_credentials:
                 try:
-                    with open(GD_CREDS_FILE, "r") as f:
-                        cred_data = json.load(f)
+                    if "GDRIVE_CREDS_JSON" in os.environ:
+                        cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                    else:
+                        with open(GD_CREDS_FILE, "r") as f:
+                            cred_data = json.load(f)
                     client_email = cred_data.get("client_email", "")
                     
                     st.info(f"""
@@ -625,8 +629,11 @@ with tab2:
                         with st.spinner("구글 드라이브 API 스캔 및 인덱싱 처리 중..."):
                             try:
                                 # 1. Authenticate with Google Drive
-                                with open(GD_CREDS_FILE, "r") as f:
-                                    cred_info = json.load(f)
+                                if "GDRIVE_CREDS_JSON" in os.environ:
+                                    cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                                else:
+                                    with open(GD_CREDS_FILE, "r") as f:
+                                        cred_info = json.load(f)
                                 service = gdrive_service.get_gdrive_service(cred_info)
                                 
                                 # 2. List remote files
