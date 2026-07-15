@@ -28,7 +28,9 @@ def list_files_in_folder(service, folder_id: str) -> List[Dict[str, Any]]:
             query = f"'{current_folder_id}' in parents and trashed = false"
             results = service.files().list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType, modifiedTime)"
+                fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
             ).execute()
             
             items = results.get('files', [])
@@ -90,7 +92,7 @@ def download_file(service, file_info: Dict[str, Any], dest_path: str) -> str:
                 final_path += '.xlsx'
         else:
             # Download binary/standard file media directly (PDF, docx, xlsx, hwpx, txt, etc.)
-            request = service.files().get_media(fileId=file_id)
+            request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
             
         # Write down the file streams
         fh = io.BytesIO()
