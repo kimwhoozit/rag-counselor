@@ -480,220 +480,235 @@ with tab1:
 with tab2:
     st.markdown("### 📚 지식베이스 관리 및 다중 소스 동기화")
     
-    # Selection of document source: Local or Google Drive
-    source_type = st.radio(
-        "📁 문서 동기화 방식 선택:",
-        options=["📂 로컬 documents 폴더", "☁️ 구글 드라이브 (Google Drive) 연동"],
-        index=0,
-        horizontal=True
-    )
-    
     col_left, col_right = st.columns([2, 3])
     
     with col_left:
         api_key = st.session_state.get("gemini_api_key")
         
-        # ---------------------------------------------
-        # Case A: Local folder synchronization
-        # ---------------------------------------------
-        if source_type == "📂 로컬 documents 폴더":
-            st.subheader("📂 로컬 폴더 동기화 상태")
+        st.subheader("☁️ 구글 드라이브 동기화 대시보드")
+        st.write("구글 클라우드 서비스 계정 키(JSON)와 동기화할 폴더 ID를 사용해 클라우드 드라이브와 실시간 싱크를 맞춥니다.")
+        
+        # Google Drive configuration inputs - Auto Clean Folder ID / URL (Supports Cloud Environment Variables)
+        env_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
+        raw_folder_id = st.text_input(
+            "구글 드라이브 폴더 ID (Folder ID):",
+            value=st.session_state.get("gdrive_folder_id", env_folder_id),
+            help="구글 드라이브 폴더 전체 URL 또는 맨 뒷부분의 폴더 ID 문자열을 입력하세요."
+        )
+        if raw_folder_id:
+            cleaned_id = raw_folder_id.strip()
+            if "drive.google.com" in cleaned_id:
+                import re
+                match = re.search(r'/folders/([a-zA-Z0-9-_]+)', cleaned_id)
+                if match:
+                    cleaned_id = match.group(1)
+            if "?" in cleaned_id:
+                cleaned_id = cleaned_id.split("?")[0]
             
-            local_files = scan_documents_folder()
-            indexed_files = database.get_indexed_files()
-            added, modified, deleted = calculate_sync_diff(local_files, indexed_files)
+            if st.session_state.get("gdrive_folder_id") != cleaned_id:
+                st.session_state.gdrive_folder_id = cleaned_id
+                st.rerun()
+        
+        gdrive_folder_id = st.session_state.get("gdrive_folder_id", env_folder_id)
             
-            has_changes = len(added) > 0 or len(modified) > 0 or len(deleted) > 0
+        uploaded_cred = st.file_uploader(
+            "구글 서비스 계정 키 (.json 파일) 등록:",
+            type=["json"],
+            help="Google Cloud Console에서 발급한 서비스 계정 키 JSON 파일을 업로드해 주세요."
+        )
+        
+        # Process uploaded JSON key
+        if uploaded_cred:
+            with open(GD_CREDS_FILE, "wb") as f:
+                f.write(uploaded_cred.getbuffer())
+            st.toast("✅ 구글 서비스 계정 자격증명이 저장되었습니다.")
             
-            if has_changes:
-                st.warning("⚠️ 로컬 `documents` 폴더에 감지되지 않은 변경사항이 있습니다.")
-                if added:
-                    st.markdown(f"➕ **신규 감지 파일 ({len(added)})**:")
-                    for f in added:
-                        st.markdown(f"- `{f}`")
-                if modified:
-                    st.markdown(f"📝 **수정 감지 파일 ({len(modified)})**:")
-                    for f in modified:
-                        st.markdown(f"- `{f}`")
-                if deleted:
-                    st.markdown(f"❌ **삭제 감지 파일 ({len(deleted)})**:")
-                    for f in deleted:
-                        st.markdown(f"- `{f}`")
-                        
-                if not api_key:
-                    st.info("💡 동기화를 실행하려면 사이드바에 Gemini API Key를 입력해 주세요.")
+        # Derived Service Account info
+        has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+        if has_credentials:
+            try:
+                if "GDRIVE_CREDS_JSON" in st.secrets:
+                    cred_data = st.secrets["GDRIVE_CREDS_JSON"]
+                    if isinstance(cred_data, str):
+                        cred_data = json.loads(cred_data)
+                elif "GDRIVE_CREDS_JSON" in os.environ:
+                    cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                 else:
-                    if st.button("🔄 로컬 폴더 변경사항 동기화 실행", type="primary", use_container_width=True):
-                        with st.spinner("폴더 문서 인덱싱 갱신 중..."):
-                            sync_documents(api_key, added, modified, deleted, local_files)
-                            st.rerun()
-            else:
-                st.success("✅ 로컬 `documents` 폴더의 모든 문서가 데이터베이스와 완전히 일치합니다.")
+                    with open(GD_CREDS_FILE, "r") as f:
+                        cred_data = json.load(f)
+                client_email = cred_data.get("client_email", "")
                 
+                st.info(f"""
+                👉 **구글 드라이브 폴더 사전 작업 안내**
+                1. 동기화할 구글 드라이브 폴더로 들어갑니다.
+                2. 아래의 서비스 계정 이메일을 **공유(편집자 권한)**로 추가해 주세요 (파일 업로드에 필요합니다):
+                   `{client_email}`
+                """)
+            except Exception as e:
+                st.error(f"구글 자격증명 파일 읽기 실패: {str(e)}")
+                
+        # ----------------------------------------------------
+        # New Google Drive File Uploader
+        # ----------------------------------------------------
+        if has_credentials and gdrive_folder_id:
             st.markdown("---")
-            st.subheader("📤 새 문서 직접 업로드")
-            st.write("웹 UI를 통해 문서를 `documents` 폴더에 직접 업로드하고 자동으로 데이터베이스에 인덱싱합니다.")
+            st.subheader("📤 구글 드라이브에 새 파일 직접 업로드")
+            st.write("웹 UI를 통해 구글 드라이브에 새 문서를 직접 저장하고, 자동으로 인덱싱(임베딩)을 갱신합니다.")
             
-            uploaded_files = st.file_uploader(
-                "업로드할 파일들을 선택하세요 (자동으로 documents 폴더에 저장됨):",
+            gdrive_files = st.file_uploader(
+                "업로드할 파일들을 선택해 주세요:",
                 type=["txt", "md", "docx", "xlsx", "xls", "pdf", "hwpx"],
                 accept_multiple_files=True,
-                key="direct_file_uploader"
+                key="gdrive_file_uploader"
             )
             
-            if uploaded_files:
+            if gdrive_files:
                 if not api_key:
                     st.warning("⚠️ 임베딩 추출을 위해 API Key 설정이 먼저 요구됩니다.")
                 else:
-                    if st.button("🚀 문서를 저장하고 동기화 실행", type="primary", use_container_width=True):
-                        for uploaded_file in uploaded_files:
-                            target_path = os.path.join(DOCS_DIR, uploaded_file.name)
-                            os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                            with open(target_path, "wb") as f:
-                                f.write(uploaded_file.getbuffer())
-                        
-                        st.toast("파일 저장 완료! 동기화를 시작합니다.")
-                        local_files = scan_documents_folder()
-                        indexed_files = database.get_indexed_files()
-                        a, m, d = calculate_sync_diff(local_files, indexed_files)
-                        sync_documents(api_key, a, m, d, local_files)
-                        st.rerun()
-                        
-        # ---------------------------------------------
-        # Case B: Google Drive API integration
-        # ---------------------------------------------
-        else:
-            st.subheader("☁️ 구글 드라이브 동기화 대시보드")
-            st.write("구글 클라우드 서비스 계정 키(JSON)와 동기화할 폴더 ID를 사용해 클라우드 드라이브와 실시간 싱크를 맞춥니다.")
-            
-            # Google Drive configuration inputs - Auto Clean Folder ID / URL (Supports Cloud Environment Variables)
-            env_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
-            raw_folder_id = st.text_input(
-                "구글 드라이브 폴더 ID (Folder ID):",
-                value=st.session_state.get("gdrive_folder_id", env_folder_id),
-                help="구글 드라이브 폴더 전체 URL 또는 맨 뒷부분의 폴더 ID 문자열을 입력하세요."
-            )
-            if raw_folder_id:
-                cleaned_id = raw_folder_id.strip()
-                if "drive.google.com" in cleaned_id:
-                    import re
-                    match = re.search(r'/folders/([a-zA-Z0-9-_]+)', cleaned_id)
-                    if match:
-                        cleaned_id = match.group(1)
-                if "?" in cleaned_id:
-                    cleaned_id = cleaned_id.split("?")[0]
-                
-                if st.session_state.get("gdrive_folder_id") != cleaned_id:
-                    st.session_state.gdrive_folder_id = cleaned_id
-                    st.rerun()
-            
-            gdrive_folder_id = st.session_state.get("gdrive_folder_id", env_folder_id)
-                
-            uploaded_cred = st.file_uploader(
-                "구글 서비스 계정 키 (.json 파일) 등록:",
-                type=["json"],
-                help="Google Cloud Console에서 발급한 서비스 계정 키 JSON 파일을 업로드해 주세요."
-            )
-            
-            # Process uploaded JSON key
-            if uploaded_cred:
-                with open(GD_CREDS_FILE, "wb") as f:
-                    f.write(uploaded_cred.getbuffer())
-                st.toast("✅ 구글 서비스 계정 자격증명이 저장되었습니다.")
-                
-            # Derived Service Account info
-            has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
-            if has_credentials:
-                try:
-                    if "GDRIVE_CREDS_JSON" in st.secrets:
-                        cred_data = st.secrets["GDRIVE_CREDS_JSON"]
-                        if isinstance(cred_data, str):
-                            cred_data = json.loads(cred_data)
-                    elif "GDRIVE_CREDS_JSON" in os.environ:
-                        cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
-                    else:
-                        with open(GD_CREDS_FILE, "r") as f:
-                            cred_data = json.load(f)
-                    client_email = cred_data.get("client_email", "")
-                    
-                    st.info(f"""
-                    👉 **구글 드라이브 폴더 사전 작업 안내**
-                    1. 동기화할 구글 드라이브 폴더로 들어갑니다.
-                    2. 아래의 서비스 계정 이메일을 **공유(뷰어 권한)**로 추가해 주세요:
-                       `{client_email}`
-                    """)
-                except Exception as e:
-                    st.error(f"구글 자격증명 파일 읽기 실패: {str(e)}")
-                    
-            if has_credentials and gdrive_folder_id:
-                if not api_key:
-                    st.info("💡 동기화를 실행하려면 사이드바에 Gemini API Key를 입력해 주세요.")
-                else:
-                    if st.button("🔄 구글 드라이브 변경사항 감지 및 동기화 실행", type="primary", use_container_width=True):
-                        with st.spinner("구글 드라이브 API 스캔 및 인덱싱 처리 중..."):
-                            try:
-                                # 1. Authenticate with Google Drive
-                                if "GDRIVE_CREDS_JSON" in st.secrets:
-                                    cred_info = st.secrets["GDRIVE_CREDS_JSON"]
-                                    if isinstance(cred_info, str):
-                                        cred_info = json.loads(cred_info)
-                                elif "GDRIVE_CREDS_JSON" in os.environ:
-                                    cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
-                                else:
-                                    with open(GD_CREDS_FILE, "r") as f:
-                                        cred_info = json.load(f)
-                                service = gdrive_service.get_gdrive_service(cred_info)
+                    if st.button("🚀 구글 드라이브로 업로드 및 동기화 실행", type="primary", use_container_width=True):
+                        # Authenticate with Google Drive
+                        try:
+                            if "GDRIVE_CREDS_JSON" in st.secrets:
+                                cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                if isinstance(cred_info, str):
+                                    cred_info = json.loads(cred_info)
+                            elif "GDRIVE_CREDS_JSON" in os.environ:
+                                cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                            else:
+                                with open(GD_CREDS_FILE, "r") as f:
+                                    cred_info = json.load(f)
+                            service = gdrive_service.get_gdrive_service(cred_info)
+                            
+                            # Upload all selected files
+                            upload_progress = st.progress(0)
+                            upload_status = st.empty()
+                            
+                            for idx, f in enumerate(gdrive_files):
+                                upload_status.write(f"📤 `{f.name}` 구글 드라이브로 업로드 중... ({idx+1}/{len(gdrive_files)})")
+                                gdrive_service.upload_file_to_folder(
+                                    service=service,
+                                    folder_id=gdrive_folder_id,
+                                    file_name=f.name,
+                                    file_content=f.getvalue(),
+                                    mime_type=f.type
+                                )
+                                upload_progress.progress((idx + 1) / len(gdrive_files))
+                            
+                            upload_status.write("✨ 구글 드라이브 업로드 완료! 데이터베이스 인덱싱을 동기화 중입니다...")
+                            
+                            # Immediately trigger full scan and sync
+                            remote_files = gdrive_service.list_files_in_folder(service, gdrive_folder_id)
+                            indexed_files = database.get_indexed_files()
+                            
+                            drive_files_state = {}
+                            drive_metadata_map = {}
+                            for rf in remote_files:
+                                rel_p = rf["rel_path"]
+                                m_epoch = parse_rfc3339(rf["modifiedTime"])
+                                drive_files_state[rel_p] = m_epoch
+                                drive_metadata_map[rel_p] = rf
                                 
-                                # 2. List remote files
-                                remote_files = gdrive_service.list_files_in_folder(service, gdrive_folder_id)
-                                indexed_files = database.get_indexed_files()
-                                
-                                # 3. Convert remote files metadata to compare
-                                drive_files_state = {}
-                                drive_metadata_map = {}
-                                for rf in remote_files:
-                                    rel_p = rf["rel_path"]
-                                    m_epoch = parse_rfc3339(rf["modifiedTime"])
-                                    drive_files_state[rel_p] = m_epoch
-                                    drive_metadata_map[rel_p] = rf
+                            added, modified, deleted = calculate_sync_diff(drive_files_state, indexed_files)
+                            total_actions = len(added) + len(modified) + len(deleted)
+                            
+                            if total_actions > 0:
+                                # Download files before RAG sync
+                                for download_idx, rel_p in enumerate(added + modified):
+                                    upload_status.write(f"📥 구글 드라이브에서 파일 다운로드 중 ({download_idx+1}/{len(added+modified)}): `{rel_p}`...")
+                                    file_info = drive_metadata_map[rel_p]
+                                    local_dest = os.path.join(DOCS_DIR, rel_p)
+                                    final_local_path = gdrive_service.download_file(service, file_info, local_dest)
                                     
-                                # 4. Calculate Diff
-                                added, modified, deleted = calculate_sync_diff(drive_files_state, indexed_files)
-                                
-                                # If changes detected, perform downloads & updates
-                                total_actions = len(added) + len(modified) + len(deleted)
-                                
-                                if total_actions > 0:
-                                    status_info = st.empty()
-                                    
-                                    # Process download for added/modified files before RAG sync
-                                    for idx, rel_p in enumerate(added + modified):
-                                        status_info.write(f"📥 구글 드라이브에서 파일 다운로드 중 ({idx+1}/{len(added+modified)}): `{rel_p}`...")
-                                        file_info = drive_metadata_map[rel_p]
-                                        local_dest = os.path.join(DOCS_DIR, rel_p)
-                                        final_local_path = gdrive_service.download_file(service, file_info, local_dest)
-                                        
-                                        # If Google Doc/Sheet export changed the local path extension
-                                        final_rel_p = os.path.relpath(final_local_path, DOCS_DIR).replace("\\", "/")
-                                        if final_rel_p != rel_p:
-                                            # update map state
-                                            drive_files_state[final_rel_p] = drive_files_state.pop(rel_p)
-                                            if rel_p in added:
-                                                added[added.index(rel_p)] = final_rel_p
-                                            if rel_p in modified:
-                                                modified[modified.index(rel_p)] = final_rel_p
-                                                
-                                    status_info.empty()
-                                    
-                                    # 5. Run standard sync pipeline using local files and batch embeddings
-                                    sync_documents(api_key, added, modified, deleted, drive_files_state)
-                                    st.rerun()
-                                else:
-                                    st.success("✅ 구글 드라이브와 로컬 데이터베이스의 동기화 상태가 완벽히 일치합니다.")
-                            except Exception as e:
-                                st.error(f"구글 드라이브 동기화 도중 오류 발생: {str(e)}")
+                                    final_rel_p = os.path.relpath(final_local_path, DOCS_DIR).replace("\\", "/")
+                                    if final_rel_p != rel_p:
+                                        drive_files_state[final_rel_p] = drive_files_state.pop(rel_p)
+                                        if rel_p in added:
+                                            added[added.index(rel_p)] = final_rel_p
+                                        if rel_p in modified:
+                                            modified[modified.index(rel_p)] = final_rel_p
+                                            
+                                sync_documents(api_key, added, modified, deleted, drive_files_state)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"구글 드라이브 업로드/동기화 도중 오류 발생: {str(e)}")
+                            
+        # ----------------------------------------------------
+        # Manual Synchronization
+        # ----------------------------------------------------
+        if has_credentials and gdrive_folder_id:
+            st.markdown("---")
+            st.subheader("🔄 구글 드라이브 수동 동기화")
+            st.write("구글 드라이브 폴더의 현재 상태를 스캔하고 데이터베이스 지식을 원격 서버와 동기화시킵니다.")
+            
+            if not api_key:
+                st.info("💡 동기화를 실행하려면 사이드바에 Gemini API Key를 입력해 주세요.")
             else:
-                st.warning("⚠️ 구글 서비스 계정 키(.json) 등록 및 드라이브 폴더 ID 입력이 완료되어야 동기화를 진행할 수 있습니다.")
+                if st.button("🔄 구글 드라이브 변경사항 감지 및 동기화 실행", type="primary", use_container_width=True):
+                    with st.spinner("구글 드라이브 API 스캔 및 인덱싱 처리 중..."):
+                        try:
+                            # 1. Authenticate with Google Drive
+                            if "GDRIVE_CREDS_JSON" in st.secrets:
+                                cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                if isinstance(cred_info, str):
+                                    cred_info = json.loads(cred_info)
+                            elif "GDRIVE_CREDS_JSON" in os.environ:
+                                cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                            else:
+                                with open(GD_CREDS_FILE, "r") as f:
+                                    cred_info = json.load(f)
+                            service = gdrive_service.get_gdrive_service(cred_info)
+                            
+                            # 2. List remote files
+                            remote_files = gdrive_service.list_files_in_folder(service, gdrive_folder_id)
+                            indexed_files = database.get_indexed_files()
+                            
+                            # 3. Convert remote files metadata to compare
+                            drive_files_state = {}
+                            drive_metadata_map = {}
+                            for rf in remote_files:
+                                rel_p = rf["rel_path"]
+                                m_epoch = parse_rfc3339(rf["modifiedTime"])
+                                drive_files_state[rel_p] = m_epoch
+                                drive_metadata_map[rel_p] = rf
+                                
+                            # 4. Calculate Diff
+                            added, modified, deleted = calculate_sync_diff(drive_files_state, indexed_files)
+                            
+                            # If changes detected, perform downloads & updates
+                            total_actions = len(added) + len(modified) + len(deleted)
+                            
+                            if total_actions > 0:
+                                status_info = st.empty()
+                                
+                                # Process download for added/modified files before RAG sync
+                                for idx, rel_p in enumerate(added + modified):
+                                    status_info.write(f"📥 구글 드라이브에서 파일 다운로드 중 ({idx+1}/{len(added+modified)}): `{rel_p}`...")
+                                    file_info = drive_metadata_map[rel_p]
+                                    local_dest = os.path.join(DOCS_DIR, rel_p)
+                                    final_local_path = gdrive_service.download_file(service, file_info, local_dest)
+                                    
+                                    # If Google Doc/Sheet export changed the local path extension
+                                    final_rel_p = os.path.relpath(final_local_path, DOCS_DIR).replace("\\", "/")
+                                    if final_rel_p != rel_p:
+                                        # update map state
+                                        drive_files_state[final_rel_p] = drive_files_state.pop(rel_p)
+                                        if rel_p in added:
+                                            added[added.index(rel_p)] = final_rel_p
+                                        if rel_p in modified:
+                                            modified[modified.index(rel_p)] = final_rel_p
+                                            
+                                status_info.empty()
+                                
+                                # 5. Run standard sync pipeline using local files and batch embeddings
+                                sync_documents(api_key, added, modified, deleted, drive_files_state)
+                                st.rerun()
+                            else:
+                                st.success("✅ 구글 드라이브와 로컬 데이터베이스의 동기화 상태가 완벽히 일치합니다.")
+                        except Exception as e:
+                            st.error(f"구글 드라이브 동기화 도중 오류 발생: {str(e)}")
+        else:
+            st.warning("⚠️ 구글 서비스 계정 키(.json) 등록 및 드라이브 폴더 ID 입력이 완료되어야 동기화를 진행할 수 있습니다.")
                 
     with col_right:
         st.subheader("🗄️ 현재 저장된 지식 목록 및 관리")

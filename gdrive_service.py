@@ -3,7 +3,7 @@ import os
 from typing import List, Dict, Any
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 def get_gdrive_service(credentials_info: Dict[str, Any]):
     """Authenticates with Google Drive API using Service Account credentials JSON."""
@@ -107,3 +107,26 @@ def download_file(service, file_info: Dict[str, Any], dest_path: str) -> str:
         return final_path
     except Exception as e:
         raise RuntimeError(f"파일 다운로드 실패 ({file_info['name']}): {str(e)}")
+
+def upload_file_to_folder(service, folder_id: str, file_name: str, file_content: bytes, mime_type: str) -> str:
+    """Uploads a file directly to a Google Drive folder.
+    Returns the uploaded file's ID.
+    """
+    try:
+        file_metadata = {
+            'name': file_name,
+            'parents': [folder_id]
+        }
+        fh = io.BytesIO(file_content)
+        media = MediaIoBaseUpload(fh, mimetype=mime_type, resumable=True)
+        
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
+        
+        return file.get('id')
+    except Exception as e:
+        raise RuntimeError(f"구글 드라이브 파일 업로드 실패: {str(e)}")
