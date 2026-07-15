@@ -18,7 +18,30 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Database
+# Initialize Database & Attempt Recovery if missing
+DB_PATH = "knowledge_base.db"
+GD_CREDS_FILE = "gdrive_credentials.json"
+
+if not os.path.exists(DB_PATH):
+    # Try to download from Google Drive
+    gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
+    has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+    if has_credentials and gdrive_folder_id:
+        try:
+            if "GDRIVE_CREDS_JSON" in st.secrets:
+                cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                if isinstance(cred_info, str):
+                    cred_info = json.loads(cred_info)
+            elif "GDRIVE_CREDS_JSON" in os.environ:
+                cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+            else:
+                with open(GD_CREDS_FILE, "r") as f:
+                    cred_info = json.load(f)
+            service = gdrive_service.get_gdrive_service(cred_info)
+            gdrive_service.download_db_file(service, gdrive_folder_id, DB_PATH)
+        except Exception:
+            pass # Fallback to default init_db
+
 database.init_db()
 
 # Create default admin if users list is empty
@@ -463,6 +486,26 @@ with tab1:
                                     embedding=emb
                                 )
                                 st.success("지식베이스에 학습 완료되었습니다! 다음 질문 검토 시 적극 참조됩니다.")
+                                
+                                # Backup DB to Google Drive
+                                try:
+                                    gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
+                                    has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+                                    if has_credentials and gdrive_folder_id:
+                                        if "GDRIVE_CREDS_JSON" in st.secrets:
+                                            cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                            if isinstance(cred_info, str):
+                                                cred_info = json.loads(cred_info)
+                                        elif "GDRIVE_CREDS_JSON" in os.environ:
+                                            cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                                        else:
+                                            with open(GD_CREDS_FILE, "r") as f:
+                                                cred_info = json.load(f)
+                                        service = gdrive_service.get_gdrive_service(cred_info)
+                                        gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
+                                except Exception as backup_err:
+                                    st.warning(f"⚠️ 학습 등록은 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                                
                                 st.session_state.last_response = None
                                 st.rerun()
                             except Exception as e:
@@ -629,6 +672,13 @@ with tab2:
                                             modified[modified.index(rel_p)] = final_rel_p
                                             
                                 sync_documents(api_key, added, modified, deleted, drive_files_state)
+                            
+                            # Backup DB to Google Drive
+                            try:
+                                gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
+                            except Exception as backup_err:
+                                st.warning(f"⚠️ 업로드는 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                            
                             st.rerun()
                         except Exception as e:
                             st.error(f"구글 드라이브 업로드/동기화 도중 오류 발생: {str(e)}")
@@ -702,6 +752,13 @@ with tab2:
                                 
                                 # 5. Run standard sync pipeline using local files and batch embeddings
                                 sync_documents(api_key, added, modified, deleted, drive_files_state)
+                                
+                                # Backup DB to Google Drive
+                                try:
+                                    gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
+                                except Exception as backup_err:
+                                    st.warning(f"⚠️ 동기화는 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                                
                                 st.rerun()
                             else:
                                 st.success("✅ 구글 드라이브와 로컬 데이터베이스의 동기화 상태가 완벽히 일치합니다.")
@@ -771,6 +828,26 @@ with tab2:
                                 database.remove_indexed_file_record(fname)
                                 break
                     st.success("해당 지식을 삭제했습니다.")
+                    
+                    # Backup DB to Google Drive
+                    try:
+                        gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
+                        has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+                        if has_credentials and gdrive_folder_id:
+                            if "GDRIVE_CREDS_JSON" in st.secrets:
+                                cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                if isinstance(cred_info, str):
+                                    cred_info = json.loads(cred_info)
+                            elif "GDRIVE_CREDS_JSON" in os.environ:
+                                cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                            else:
+                                with open(GD_CREDS_FILE, "r") as f:
+                                    cred_info = json.load(f)
+                            service = gdrive_service.get_gdrive_service(cred_info)
+                            gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
+                    except Exception as backup_err:
+                        st.warning(f"⚠️ 지식 삭제는 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                        
                     st.rerun()
         else:
             st.info("현재 로컬 데이터베이스에 저장된 지식이 없습니다. 문서를 업로드해 주세요.")

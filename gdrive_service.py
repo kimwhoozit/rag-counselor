@@ -130,3 +130,87 @@ def upload_file_to_folder(service, folder_id: str, file_name: str, file_content:
         return file.get('id')
     except Exception as e:
         raise RuntimeError(f"구글 드라이브 파일 업로드 실패: {str(e)}")
+
+def download_db_file(service, folder_id: str, dest_path: str) -> bool:
+    """Finds and downloads knowledge_base.db from Google Drive if it exists.
+    Returns True if downloaded successfully, False otherwise.
+    """
+    try:
+        query = f"name = 'knowledge_base.db' and '{folder_id}' in parents and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name, mimeType)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        items = results.get('files', [])
+        if not items:
+            return False
+            
+        file_info = items[0]
+        request = service.files().get_media(fileId=file_info['id'], supportsAllDrives=True)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+            
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        with open(dest_path, 'wb') as f:
+            f.write(fh.getvalue())
+        return True
+    except Exception as e:
+        print(f"구글 드라이브 DB 다운로드 실패: {str(e)}")
+        return False
+
+def upload_db_file(service, folder_id: str, db_path: str) -> str:
+    """Uploads (or overwrites) the local SQLite DB to Google Drive.
+    Returns the file ID.
+    """
+    try:
+        if not os.path.exists(db_path):
+            return ""
+            
+        query = f"name = 'knowledge_base.db' and '{folder_id}' in parents and trashed = false"
+        results = service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        items = results.get('files', [])
+        
+        file_metadata = {
+            'name': 'knowledge_base.db',
+            'parents': [folder_id]
+        }
+        
+        with open(db_path, 'rb') as f:
+            db_content = f.read()
+            
+        fh = io.BytesIO(db_content)
+        media = MediaIoBaseUpload(fh, mimetype='application/x-sqlite3', resumable=True)
+        
+        if items:
+            # Overwrite existing file
+            file_id = items[0]['id']
+            file = service.files().update(
+                fileId=file_id,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+            return file.get('id')
+        else:
+            # Create new file
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+            return file.get('id')
+    except Exception as e:
+        raise RuntimeError(f"구글 드라이브 DB 백업 업로드 실패: {str(e)}")
