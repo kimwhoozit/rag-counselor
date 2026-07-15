@@ -1,9 +1,11 @@
+import time
+import random
 import google.generativeai as genai
 from typing import List, Dict, Any
 
 def get_embedding(text: str, api_key: str) -> List[float]:
     """Generates text embedding using a supported embedding model.
-    Includes self-healing fallback mechanisms to dynamically detect available models.
+    Includes self-healing fallback mechanisms and exponential backoff retry for quota limits.
     """
     if not text.strip():
         return []
@@ -13,18 +15,32 @@ def get_embedding(text: str, api_key: str) -> List[float]:
     # Preferred models
     preferred_models = ["models/gemini-embedding-001", "models/text-embedding-004", "models/embedding-001"]
     
+    max_retries = 5
+    base_delay = 2.0  # seconds
+    
     last_err = None
     for model_name in preferred_models:
-        try:
-            response = genai.embed_content(
-                model=model_name,
-                content=text,
-                task_type="retrieval_document"
-            )
-            return response['embedding']
-        except Exception as e:
-            last_err = e
-            continue
+        for attempt in range(max_retries):
+            try:
+                response = genai.embed_content(
+                    model=model_name,
+                    content=text,
+                    task_type="retrieval_document"
+                )
+                return response['embedding']
+            except Exception as e:
+                last_err = e
+                err_msg = str(e).lower()
+                # If rate limit / quota error is hit, retry with backoff
+                if "429" in err_msg or "quota" in err_msg or "rate limit" in err_msg or "resource_exhausted" in err_msg:
+                    sleep_time = (base_delay ** attempt) + random.uniform(0, 1)
+                    time.sleep(sleep_time)
+                    continue
+                else:
+                    # Non-quota errors should skip retry and try next model
+                    break
+        # Continue to next model if we failed all attempts or hit non-quota error
+        continue
             
     # Auto-detection fallback
     try:
@@ -34,33 +50,44 @@ def get_embedding(text: str, api_key: str) -> List[float]:
                 available_embed_models.append(m.name)
                 
         if available_embed_models:
-            # Sort to try text-embedding models first
             available_embed_models.sort(key=lambda x: "embedding" in x, reverse=True)
             fallback_model = available_embed_models[0]
-            try:
-                response = genai.embed_content(
-                    model=fallback_model,
-                    content=text,
-                    task_type="retrieval_document"
-                )
-                return response['embedding']
-            except Exception as final_err:
-                raise RuntimeError(
-                    f"임베딩 생성 오류. 자동 선택 모델 ({fallback_model}) 호출 실패: {str(final_err)}. "
-                    f"API에서 조회된 사용 가능한 모델 목록: {available_embed_models}"
-                )
+            
+            for attempt in range(max_retries):
+                try:
+                    response = genai.embed_content(
+                        model=fallback_model,
+                        content=text,
+                        task_type="retrieval_document"
+                    )
+                    return response['embedding']
+                except Exception as final_err:
+                    last_err = final_err
+                    err_msg = str(final_err).lower()
+                    if "429" in err_msg or "quota" in err_msg or "rate limit" in err_msg or "resource_exhausted" in err_msg:
+                        sleep_time = (base_delay ** attempt) + random.uniform(0, 1)
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        break
+            raise RuntimeError(
+                f"임베딩 생성 오류. 자동 선택 모델 ({fallback_model}) 호출 실패: {str(last_err)}. "
+                f"API에서 조회된 사용 가능한 모델 목록: {available_embed_models}"
+            )
         else:
             raise RuntimeError(
                 f"임베딩 모델을 찾을 수 없습니다. 기본 시도 중 마지막 에러: {str(last_err)}"
             )
     except Exception as list_err:
+        if "임베딩 생성 오류" in str(list_err) or "임베딩 모델을 찾을 수 없습니다" in str(list_err):
+            raise list_err
         raise RuntimeError(
             f"임베딩 생성 실패: {str(last_err)}. (모델 목록 확인 실패: {str(list_err)})"
         )
 
 def get_embeddings_batch(texts: List[str], api_key: str) -> List[List[float]]:
     """Generates embeddings for a list of texts in batches of 100 using models/gemini-embedding-001.
-    Reduces API call count by 100x, vastly improving performance and avoiding rate limits.
+    Reduces API call count by 100x and includes exponential backoff retry to avoid rate limits on Free Tier.
     """
     if not texts:
         return []
@@ -71,19 +98,41 @@ def get_embeddings_batch(texts: List[str], api_key: str) -> List[List[float]]:
     all_embeddings = []
     batch_size = 100
     
+    max_retries = 6
+    base_delay = 3.0  # seconds
+    
     for i in range(0, len(texts), batch_size):
         batch_texts = texts[i:i+batch_size]
-        try:
-            response = genai.embed_content(
-                model=model_name,
-                content=batch_texts,
-                task_type="retrieval_document"
-            )
-            # The API returns a list of embeddings in response['embedding']
-            all_embeddings.extend(response['embedding'])
-        except Exception as e:
+        success = False
+        last_err = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = genai.embed_content(
+                    model=model_name,
+                    content=batch_texts,
+                    task_type="retrieval_document"
+                )
+                all_embeddings.extend(response['embedding'])
+                success = True
+                # Small pause between successful batch calls to cool down rate limits
+                time.sleep(0.5)
+                break
+            except Exception as e:
+                last_err = e
+                err_msg = str(e).lower()
+                if "429" in err_msg or "quota" in err_msg or "rate limit" in err_msg or "resource_exhausted" in err_msg:
+                    sleep_time = (base_delay ** attempt) + random.uniform(0, 1.5)
+                    # Cap the sleep time to maximum 60 seconds
+                    sleep_time = min(sleep_time, 60.0)
+                    time.sleep(sleep_time)
+                else:
+                    # Non-quota error, cool down slightly and retry
+                    time.sleep(1.0)
+        
+        if not success:
             raise RuntimeError(
-                f"일괄 임베딩 생성 중 오류 발생 (인덱스 {i}~{i+len(batch_texts)}): {str(e)}"
+                f"일괄 임베딩 생성 중 오류 발생 (인덱스 {i}~{i+len(batch_texts)}) - 최대 재시도 한도 도달: {str(last_err)}"
             )
             
     return all_embeddings

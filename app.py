@@ -306,7 +306,7 @@ with st.sidebar:
     st.markdown("---")
     
     # API Configuration
-    env_api_key = os.environ.get("GEMINI_API_KEY", "")
+    env_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
     st.markdown("#### 🔑 API Key 설정")
     api_key_input = st.text_input(
         "Gemini API Key:",
@@ -567,7 +567,7 @@ with tab2:
             st.write("구글 클라우드 서비스 계정 키(JSON)와 동기화할 폴더 ID를 사용해 클라우드 드라이브와 실시간 싱크를 맞춥니다.")
             
             # Google Drive configuration inputs - Auto Clean Folder ID / URL (Supports Cloud Environment Variables)
-            env_folder_id = os.environ.get("gdrive_folder_id", "")
+            env_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
             raw_folder_id = st.text_input(
                 "구글 드라이브 폴더 ID (Folder ID):",
                 value=st.session_state.get("gdrive_folder_id", env_folder_id),
@@ -602,10 +602,14 @@ with tab2:
                 st.toast("✅ 구글 서비스 계정 자격증명이 저장되었습니다.")
                 
             # Derived Service Account info
-            has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ
+            has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
             if has_credentials:
                 try:
-                    if "GDRIVE_CREDS_JSON" in os.environ:
+                    if "GDRIVE_CREDS_JSON" in st.secrets:
+                        cred_data = st.secrets["GDRIVE_CREDS_JSON"]
+                        if isinstance(cred_data, str):
+                            cred_data = json.loads(cred_data)
+                    elif "GDRIVE_CREDS_JSON" in os.environ:
                         cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                     else:
                         with open(GD_CREDS_FILE, "r") as f:
@@ -629,7 +633,11 @@ with tab2:
                         with st.spinner("구글 드라이브 API 스캔 및 인덱싱 처리 중..."):
                             try:
                                 # 1. Authenticate with Google Drive
-                                if "GDRIVE_CREDS_JSON" in os.environ:
+                                if "GDRIVE_CREDS_JSON" in st.secrets:
+                                    cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                    if isinstance(cred_info, str):
+                                        cred_info = json.loads(cred_info)
+                                elif "GDRIVE_CREDS_JSON" in os.environ:
                                     cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                                 else:
                                     with open(GD_CREDS_FILE, "r") as f:
