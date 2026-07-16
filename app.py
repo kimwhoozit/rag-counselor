@@ -165,8 +165,8 @@ st.markdown("""
 
 # Login Gate
 if not st.session_state.authenticated:
-    st.markdown('<div class="main-title" style="text-align:center; margin-top: 3rem;">🌱 Project Growth Advisor</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title" style="text-align:center; margin-bottom: 3rem;">프로젝트 성장형 AI 상담사 - 로그인 페이지</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title" style="text-align:center; margin-top: 3rem;">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title" style="text-align:center; margin-bottom: 3rem;">로그인 페이지</div>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -372,20 +372,20 @@ with st.sidebar:
         
     st.markdown("---")
     
-    # API Configuration
-    env_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
-    st.markdown("#### 🔑 API Key 설정")
-    api_key_input = st.text_input(
-        "Gemini API Key:",
-        type="password",
-        value=st.session_state.get("gemini_api_key", env_api_key),
-        help="Google AI Studio에서 발급받은 Gemini API Key를 입력하세요.",
-        key="gdrive_api_key_input"
-    )
-    if api_key_input:
-        st.session_state.gemini_api_key = api_key_input
-        
-    st.markdown("---")
+    # API Configuration (Only visible to admin)
+    if st.session_state.role == "admin":
+        env_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+        st.markdown("#### 🔑 API Key 설정")
+        api_key_input = st.text_input(
+            "Gemini API Key:",
+            type="password",
+            value=st.session_state.get("gemini_api_key", env_api_key),
+            help="Google AI Studio에서 발급받은 Gemini API Key를 입력하세요.",
+            key="gdrive_api_key_input"
+        )
+        if api_key_input:
+            st.session_state.gemini_api_key = api_key_input
+        st.markdown("---")
     
     # Model Configuration
     st.markdown("#### ⚙️ 추론 모델 설정")
@@ -396,16 +396,7 @@ with st.sidebar:
         help="추론 성능과 속도에 맞는 모델을 선택합니다.",
         key="sb_model_selector"
     )
-    
     st.markdown("---")
-    
-    # Utility Commands
-    if st.button("🧹 대화 세션 기록 리셋", use_container_width=True, key="btn_reset_chat_sidebar"):
-        database.clear_chat_history(st.session_state.session_id)
-        st.session_state.messages = []
-        st.session_state.last_response = None
-        st.toast("대화 기록이 성공적으로 청소되었습니다.")
-        st.rerun()
 
 # 3. Main Dashboard Layout Header
 st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
@@ -432,14 +423,23 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
         with st.chat_message(msg["role"]):
             st.write(msg["message"])
             
-    # 입력창 바로 위에 실시간 웹검색 연동 토글 상시 배치
-    enable_search = st.toggle(
-        "🌐 실시간 웹 검색 연동",
-        value=st.session_state.get("enable_search", True),
-        help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
-        key="main_page_web_search_toggle"
-    )
-    st.session_state.enable_search = enable_search
+    # 입력창 바로 위에 실시간 웹검색 토글 및 대화 리셋 버튼 수평 가로 배치
+    c_toggle, c_reset = st.columns([3, 1])
+    with c_toggle:
+        enable_search = st.toggle(
+            "🌐 실시간 웹 검색 연동",
+            value=st.session_state.get("enable_search", True),
+            help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
+            key="main_page_web_search_toggle"
+        )
+        st.session_state.enable_search = enable_search
+    with c_reset:
+        if st.button("🧹 대화 기록 리셋", use_container_width=True, key="btn_reset_chat_main"):
+            database.clear_chat_history(st.session_state.session_id)
+            st.session_state.messages = []
+            st.session_state.last_response = None
+            st.toast("대화 기록이 청소되었습니다.")
+            st.rerun()
             
     # Input field
     if prompt := st.chat_input("프로젝트 서류 검토 및 기준 법령에 대해 물어보세요..."):
