@@ -3,6 +3,7 @@ from typing import List
 import pandas as pd
 import docx
 from pypdf import PdfReader
+import olefile
 
 def parse_file(file_path: str) -> str:
     """Reads various file types and returns their text contents.
@@ -70,6 +71,12 @@ def parse_file(file_path: str) -> str:
         except Exception as e:
             raise ValueError(f"Failed to read HWPX file: {str(e)}")
             
+    elif ext == '.hwp':
+        try:
+            return extract_hwp_text(file_path)
+        except Exception as e:
+            raise ValueError(f"Failed to read HWP file: {str(e)}")
+            
     else:
         raise ValueError(f"Unsupported file format: {ext}")
 
@@ -113,6 +120,22 @@ def extract_hwpx_text(file_path: str) -> str:
                 text_content.append('\n'.join(section_texts))
                 
     return '\n\n'.join(text_content)
+
+def extract_hwp_text(file_path: str) -> str:
+    """Extracts text from older HWP (Hancom Office 5.0+) files by reading
+    the PrvText (preview text) stream using the olefile package.
+    """
+    try:
+        f = olefile.OleFileIO(file_path)
+        if f.exists('PrvText'):
+            data = f.openstream('PrvText').read()
+            # HWP5 PrvText stream is typically stored as UTF-16 LE
+            text = data.decode('utf-16-le', errors='ignore')
+            return text
+        else:
+            raise ValueError("PrvText stream not found inside the HWP file structure.")
+    except Exception as e:
+        raise ValueError(f"OLE extraction failed: {str(e)}")
 
 
 def split_text(text: str, chunk_size: int = 800, chunk_overlap: int = 150) -> List[str]:

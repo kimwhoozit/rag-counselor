@@ -162,7 +162,7 @@ def scan_documents_folder():
     if not os.path.exists(DOCS_DIR):
         os.makedirs(DOCS_DIR)
         
-    supported_extensions = {'.txt', '.md', '.docx', '.xlsx', '.xls', '.pdf', '.hwpx'}
+    supported_extensions = {'.txt', '.md', '.docx', '.xlsx', '.xls', '.pdf', '.hwpx', '.hwp'}
     files_state = {}
     
     for root, dirs, files in os.walk(DOCS_DIR):
@@ -646,8 +646,12 @@ with tab2:
                             
                             drive_files_state = {}
                             drive_metadata_map = {}
+                            supported_exts = {'.txt', '.md', '.docx', '.xlsx', '.xls', '.pdf', '.hwpx', '.hwp'}
                             for rf in remote_files:
                                 rel_p = rf["rel_path"]
+                                ext = os.path.splitext(rel_p)[1].lower()
+                                if ext not in supported_exts:
+                                    continue  # Skip unsupported files like Thumbs.db
                                 m_epoch = parse_rfc3339(rf["modifiedTime"])
                                 drive_files_state[rel_p] = m_epoch
                                 drive_metadata_map[rel_p] = rf
@@ -716,8 +720,12 @@ with tab2:
                             # 3. Convert remote files metadata to compare
                             drive_files_state = {}
                             drive_metadata_map = {}
+                            supported_exts = {'.txt', '.md', '.docx', '.xlsx', '.xls', '.pdf', '.hwpx', '.hwp'}
                             for rf in remote_files:
                                 rel_p = rf["rel_path"]
+                                ext = os.path.splitext(rel_p)[1].lower()
+                                if ext not in supported_exts:
+                                    continue  # Skip unsupported files like Thumbs.db
                                 m_epoch = parse_rfc3339(rf["modifiedTime"])
                                 drive_files_state[rel_p] = m_epoch
                                 drive_metadata_map[rel_p] = rf
