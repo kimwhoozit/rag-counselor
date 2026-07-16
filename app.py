@@ -161,11 +161,28 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 상단 메뉴바 고체 래퍼 스타일 (stHeader 내부로 이식되었을 때 최적화) */
+    /* 모든 레이아웃 래퍼의 transform, contain, will-change를 일괄 해제하여 fixed 요소 탈출 확보 */
+    .element-container, 
+    .stVerticalBlock, 
+    .stVerticalBlockBorderWrapper, 
+    [data-testid="stVerticalBlock"],
+    [data-testid="stAppViewBlockContainer"],
+    [data-testid="stAppViewContainer"] {
+        transform: none !important;
+        perspective: none !important;
+        contain: none !important;      /* CSS Containment 감옥 탈출의 핵심 */
+        will-change: auto !important;  /* Stacking context 강제 생성 방지 */
+    }
+
+    /* 상단 메뉴바 고체 래퍼 스타일 (화면 상단 완전 고정 및 이식 대비) */
     div[data-key="sticky_nav_container"] {
-        position: relative !important;
+        position: fixed !important;
+        top: 0px !important; /* 최상단에 완전 박제 고정 */
+        left: 0px !important;
+        right: 0px !important;
         width: 100vw !important;
         box-sizing: border-box !important;
+        z-index: 99999999 !important; /* 헤더보다 훨씬 위에 뜨도록 z-index 극대화 */
         background-color: #0e1117 !important;
         padding-top: 8px !important;
         padding-bottom: 8px !important;
@@ -173,7 +190,7 @@ st.markdown("""
         padding-right: 2rem !important;
         margin: 0 !important;
         border-bottom: 1.5px solid #1e293b !important;
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6) !important;
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
@@ -442,22 +459,21 @@ with st.container(key="sticky_nav_container"):
         label_visibility="collapsed"
     )
     
-    # JS transplant snippet to escape CORS sandbox limits by appending to local iframe stHeader
+    # JS transplant snippet with persistent polling loop to bypass Streamlit re-renders and sandboxing
     transplant_js = """
     <script>
         (function() {
             function transplant() {
-                var p = document; // Avoid using window.parent to bypass CORS sandbox restrictions
+                var p = document;
                 var nav = p.querySelector('div[data-key="sticky_nav_container"]');
                 var header = p.querySelector('header[data-testid="stHeader"]');
                 if (nav && header && nav.parentElement !== header) {
                     header.appendChild(nav);
                 }
             }
+            // Run continuously every 200ms to recover from Streamlit rerun DOM resets
             transplant();
-            setTimeout(transplant, 100);
-            setTimeout(transplant, 500);
-            setTimeout(transplant, 1000);
+            setInterval(transplant, 200);
         })();
     </script>
     """
