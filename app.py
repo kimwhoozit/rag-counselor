@@ -165,7 +165,7 @@ st.markdown("""
     div[data-key="sticky_nav_container"] {
         position: -webkit-sticky !important;
         position: sticky !important;
-        top: 2.875rem !important; /* Streamlit 기본 탑바 높이 바로 아래 고정 */
+        top: 0px !important; /* 화면 최상단 밀착 고정 */
         z-index: 99999 !important;
         background-color: #0e1117 !important;
         padding-top: 12px !important;
