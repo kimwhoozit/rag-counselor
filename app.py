@@ -161,51 +161,52 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 기본 본문 패딩 초기화 */
-    div.block-container {
-        padding-top: 3rem !important;
-    }
-    
-    /* 모든 레이아웃 래퍼의 containment 및 transform 속성을 풀어 fixed 요소가 화면 하단에 고정되게 조치 */
-    .element-container, 
-    .stVerticalBlock, 
-    .stVerticalBlockBorderWrapper, 
-    [data-testid="stVerticalBlock"],
-    [data-testid="stAppViewBlockContainer"],
-    [data-testid="stAppViewContainer"] {
-        transform: none !important;
-        perspective: none !important;
-        contain: none !important;
-        will-change: auto !important;
-    }
-
-    /* 하단 입력바 결합 제어판 스타일 (Pure CSS fixed 고정 - 클래스 직접 타겟팅) */
+    /* 하단 하얀색 입력 영역에 묶이는 일체형 제어판 스타일 */
     div.fixed-bottom-control-box {
         position: fixed !important;
-        bottom: 75px !important; /* st.chat_input 바로 위 지점에 고정 */
-        left: 0px !important;
-        width: 100vw !important;
+        bottom: 60px !important;           /* 챗 인풋 바로 위에 고착 */
+        left: 12% !important;              /* 입력창 너비 정렬 */
+        right: 12% !important;
+        width: 76% !important;
         box-sizing: border-box !important;
-        z-index: 999999 !important; /* 대화 텍스트보다 항상 위에 뜨도록 함 */
-        background-color: #0e1117 !important;
-        padding-top: 8px !important;
-        padding-bottom: 8px !important;
-        padding-left: 20% !important; /* 입력 상자 가로 폭과 나란히 정렬 */
-        padding-right: 20% !important;
-        margin: 0 !important;
-        border-top: 1.5px solid #1e293b !important;
-        border-bottom: 1.5px solid #1e293b !important;
-        box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.5) !important;
+        z-index: 999999 !important;
+        background-color: #ffffff !important; /* 하얀색 하부 영역 테마 매칭 */
+        color: #0f172a !important;          /* 내부 글씨색 다크화 */
+        padding: 10px 20px !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 8px 8px 0 0 !important; /* 상단 모서리 둥글게 결합 */
+        box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.06) !important;
         display: flex !important;
         flex-direction: row !important;
         justify-content: space-between !important;
         align-items: center !important;
     }
     
-    /* 기본 본문 패딩 초기화 */
+    /* 토글 텍스트 및 라벨 다크모드/화이트 조화 대응 */
+    div.fixed-bottom-control-box p, 
+    div.fixed-bottom-control-box label,
+    div.fixed-bottom-control-box span {
+        color: #0f172a !important;
+        font-weight: 600 !important;
+    }
+    
+    /* 상단 로고+메뉴 통합 정렬 박스 */
+    div.fixed-top-header-box {
+        text-align: center !important;
+        background-color: #0e1117 !important;
+        padding: 15px !important;
+        border-bottom: 1px solid #1e293b !important;
+        margin-bottom: 2rem !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 12px !important;
+    }
+    
+    /* 기본 본문 패딩 초기화 및 하단 가림 배려 */
     div.block-container {
-        padding-top: 3rem !important;
-        padding-bottom: 8rem !important; /* 하단 고정 바로 인한 컨텐츠 가림 방지 */
+        padding-top: 2rem !important;
+        padding-bottom: 10rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -400,22 +401,9 @@ if not st.session_state.messages:
     db_history = database.get_chat_history(st.session_state.session_id)
     st.session_state.messages = db_history
 
-# 2. Sidebar Layout (Navigation & Options Panel)
+# 2. Sidebar Layout (Options Panel)
 with st.sidebar:
     st.markdown('<div style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
-    
-    # Sidebar Navigation Menu (Always Fixed)
-    menu = st.radio(
-        "📌 대시보드 메뉴 선택",
-        options=[
-            "💬 서류 검토 및 상담 (RAG)",
-            "📚 구글 드라이브 지식 관리",
-            "⚙️ 시스템 설정 및 가이드"
-        ],
-        index=0
-    )
-    
-    st.markdown("---")
     
     # Active User Info
     st.markdown(f"👤 **접속 계정**: `{st.session_state.username}`")
@@ -457,9 +445,16 @@ with st.sidebar:
     )
     st.markdown("---")
 
-# 3. Main Dashboard Layout Header
+# 3. Main Dashboard Layout Header & Menu Navigation Combo
+st.markdown('<div class="fixed-top-header-box">', unsafe_allow_html=True)
 st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
-st.markdown("---")
+menu = st.segmented_control(
+    "📍 메뉴 이동",
+    options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
+    default="💬 서류 검토 및 상담 (RAG)",
+    label_visibility="collapsed"
+)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
 # Menu 1: 대화 및 서류 검토
