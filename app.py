@@ -442,6 +442,27 @@ with st.container(key="sticky_nav_container"):
         default="💬 서류 검토 및 상담 (RAG)",
         label_visibility="collapsed"
     )
+    
+    # JS transplant snippet to escape Streamlit's container clipping constraints
+    transplant_js = """
+    <script>
+        (function() {
+            function transplant() {
+                var p = window.parent.document;
+                var nav = p.querySelector('div[data-key="sticky_nav_container"]');
+                var main = p.querySelector('.main');
+                if (nav && main && nav.parentElement !== main) {
+                    main.insertBefore(nav, main.firstChild);
+                }
+            }
+            transplant();
+            setTimeout(transplant, 100);
+            setTimeout(transplant, 500);
+            setTimeout(transplant, 1000);
+        })();
+    </script>
+    """
+    st.markdown(transplant_js, unsafe_allow_html=True)
 
 # ==========================================
 # Menu 1: 대화 및 서류 검토
