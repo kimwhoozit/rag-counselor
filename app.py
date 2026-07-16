@@ -165,6 +165,20 @@ st.markdown("""
     div.block-container {
         padding-top: 3rem !important;
     }
+    
+    /* 하단 입력바 결합 제어판 스타일 */
+    div[data-key="bottom_control_container"] {
+        width: 100% !important;
+        background-color: #0e1117 !important; /* 챗 인풋 컨테이너와 색상 통일 */
+        padding: 8px 16px !important;
+        margin: 0 !important;
+        border-top: 1.5px solid #1e293b !important;
+        border-bottom: 1px solid #1e293b !important;
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -432,23 +446,43 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
         with st.chat_message(msg["role"]):
             st.write(msg["message"])
             
-    # 입력창 바로 위에 실시간 웹검색 토글 및 대화 리셋 버튼 수평 가로 배치
-    c_toggle, c_reset = st.columns([3, 1])
-    with c_toggle:
-        enable_search = st.toggle(
-            "🌐 실시간 웹 검색 연동",
-            value=st.session_state.get("enable_search", True),
-            help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
-            key="main_page_web_search_toggle"
-        )
-        st.session_state.enable_search = enable_search
-    with c_reset:
-        if st.button("🧹 대화 기록 리셋", use_container_width=True, key="btn_reset_chat_main"):
-            database.clear_chat_history(st.session_state.session_id)
-            st.session_state.messages = []
-            st.session_state.last_response = None
-            st.toast("대화 기록이 청소되었습니다.")
-            st.rerun()
+    # 챗 인풋 위에 고정 탑재될 웹검색/리셋 컨트롤 박스
+    with st.container(key="bottom_control_container"):
+        c_toggle, c_reset = st.columns([3, 1])
+        with c_toggle:
+            enable_search = st.toggle(
+                "🌐 실시간 웹 검색 연동",
+                value=st.session_state.get("enable_search", True),
+                help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
+                key="main_page_web_search_toggle"
+            )
+            st.session_state.enable_search = enable_search
+        with c_reset:
+            if st.button("🧹 대화 기록 리셋", use_container_width=True, key="btn_reset_chat_main"):
+                database.clear_chat_history(st.session_state.session_id)
+                st.session_state.messages = []
+                st.session_state.last_response = None
+                st.toast("대화 기록이 청소되었습니다.")
+                st.rerun()
+
+    # 하단 챗 인풋 상자 내부로 컨트롤 박스를 실시간 병합시키는 폴링 스크립트
+    bottom_transplant_js = """
+    <script>
+        (function() {
+            function transplantBottom() {
+                var p = document;
+                var controls = p.querySelector('div[data-key="bottom_control_container"]');
+                var inputArea = p.querySelector('div[data-testid="stChatInputContainer"]');
+                if (controls && inputArea && controls.parentElement !== inputArea) {
+                    inputArea.insertBefore(controls, inputArea.firstChild);
+                }
+            }
+            transplantBottom();
+            setInterval(transplantBottom, 200);
+        })();
+    </script>
+    """
+    st.markdown(bottom_transplant_js, unsafe_allow_html=True)
             
     # Input field
     if prompt := st.chat_input("프로젝트 서류 검토 및 기준 법령에 대해 물어보세요..."):
