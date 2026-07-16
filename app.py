@@ -161,13 +161,14 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 조상 엘리먼트의 fixed 묶임 해제 (Containment 감옥 탈출) */
-    div.element-container:has(div[data-key="sticky_nav_container"]),
-    div.stVerticalBlock:has(div[data-key="sticky_nav_container"]),
-    div.stVerticalBlockBorderWrapper:has(div[data-key="sticky_nav_container"]),
-    [data-testid="stVerticalBlock"]:has(div[data-key="sticky_nav_container"]) {
-        position: static !important;
+    /* 모든 레이아웃 래퍼의 transform을 일괄 해제하여 position: fixed 요소가 갇히지 않고 화면 상단에 고정되게 조치 */
+    .element-container, 
+    .stVerticalBlock, 
+    .stVerticalBlockBorderWrapper, 
+    [data-testid="stVerticalBlock"],
+    [data-testid="stAppViewBlockContainer"] {
         transform: none !important;
+        perspective: none !important;
     }
 
     /* 상단 메뉴바 화면 상단에 완전 고정 (Fixed Header Panel) */
@@ -178,7 +179,7 @@ st.markdown("""
         right: 0px !important;
         width: 100vw !important; /* 화면 가로 폭 100% 꽉 채우기 */
         box-sizing: border-box !important;
-        z-index: 99999 !important;
+        z-index: 99999999 !important; /* z-index를 최상위로 격상 */
         background: #0e1117 !important; /* 투명도 없는 완벽한 고체 배경색 */
         background-color: #0e1117 !important;
         padding-top: 15px !important;
