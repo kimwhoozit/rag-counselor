@@ -161,17 +161,25 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 상단 메뉴바 스크롤 고정 (Sticky Header) */
+    /* 상단 메뉴바 화면 상단에 완전 고정 (Fixed Header) */
     div[data-key="sticky_nav_container"] {
-        position: -webkit-sticky !important;
-        position: sticky !important;
-        top: 0px !important; /* 화면 최상단 밀착 고정 */
+        position: fixed !important;
+        top: 0px !important; /* 최상단에 완전 고정 */
+        left: 0px !important;
+        right: 0px !important;
         z-index: 99999 !important;
         background-color: #0e1117 !important;
-        padding-top: 12px !important;
-        padding-bottom: 12px !important;
+        padding-top: 15px !important;
+        padding-bottom: 15px !important;
+        padding-left: 5rem !important; /* 좌우 마진 조율 */
+        padding-right: 5rem !important;
         border-bottom: 1.5px solid #1e293b !important;
-        margin-bottom: 1.5rem !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    /* 본문 영역 상단을 메뉴바 높이만큼 내려주어 겹침 방지 */
+    div.block-container {
+        padding-top: 5.5rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
