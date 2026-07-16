@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="프로젝트 성장형 AI 상담사",
     page_icon="🌱",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Initialize Database & Attempt Recovery if missing
@@ -152,6 +152,13 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-top: 0.4rem;
+    }
+    
+    /* 텍스트 입력창 및 텍스트 영역의 글자색 선명하게 강제 지정 */
+    input, textarea, [data-testid="stChatInput"] textarea {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #1e293b !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -347,22 +354,9 @@ if not st.session_state.messages:
     db_history = database.get_chat_history(st.session_state.session_id)
     st.session_state.messages = db_history
 
-# 2. Sidebar Layout
+# 2. Sidebar Layout (Options & Settings Popup Panel)
 with st.sidebar:
-    st.markdown('<div style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">🌱 Project Advisor</div>', unsafe_allow_html=True)
-    
-    # Modern Sidebar Navigation Menu
-    menu = st.radio(
-        "📌 대시보드 메뉴",
-        options=[
-            "💬 서류 검토 및 상담 (RAG)",
-            "📚 구글 드라이브 지식 관리",
-            "⚙️ 시스템 설정 및 가이드"
-        ],
-        index=0
-    )
-    
-    st.markdown("---")
+    st.markdown('<div style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">⚙️ 설정 및 시스템 관리</div>', unsafe_allow_html=True)
     
     # Active User Info
     st.markdown(f"👤 **접속 계정**: `{st.session_state.username}`")
@@ -385,32 +379,28 @@ with st.sidebar:
         "Gemini API Key:",
         type="password",
         value=st.session_state.get("gemini_api_key", env_api_key),
-        help="Google AI Studio에서 발급받은 Gemini API Key를 입력하세요."
+        help="Google AI Studio에서 발급받은 Gemini API Key를 입력하세요.",
+        key="gdrive_api_key_input"
     )
     if api_key_input:
         st.session_state.gemini_api_key = api_key_input
         
     st.markdown("---")
     
-    # Model & Options Configuration
-    st.markdown("#### ⚙️ 검토/추론 옵션")
+    # Model Configuration
+    st.markdown("#### ⚙️ 추론 모델 설정")
     selected_model = st.selectbox(
         "추론 LLM 모델 선택:",
         options=["gemini-2.5-flash", "gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
         index=0,
-        help="추론 성능과 속도에 맞는 모델을 선택합니다."
-    )
-    
-    enable_search = st.toggle(
-        "🌐 실시간 웹 검색 연동",
-        value=True,
-        help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다."
+        help="추론 성능과 속도에 맞는 모델을 선택합니다.",
+        key="sb_model_selector"
     )
     
     st.markdown("---")
     
     # Utility Commands
-    if st.button("🧹 대화 세션 기록 리셋", use_container_width=True):
+    if st.button("🧹 대화 세션 기록 리셋", use_container_width=True, key="btn_reset_chat_sidebar"):
         database.clear_chat_history(st.session_state.session_id)
         st.session_state.messages = []
         st.session_state.last_response = None
@@ -418,8 +408,15 @@ with st.sidebar:
         st.rerun()
 
 # 3. Main Dashboard Layout Header
-st.markdown('<div class="main-title">🌱 Project Growth Advisor</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">데이터베이스 자료 검토, 최신 법률 웹 검색, 상담 내역 자가 성장을 지원하는 프로젝트 상담사</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
+
+# Horizontal Navigation Menu (Segmented Control)
+menu = st.segmented_control(
+    "📍 메뉴 이동",
+    options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
+    default="💬 서류 검토 및 상담 (RAG)",
+    label_visibility="collapsed"
+)
 st.markdown("---")
 
 # ==========================================
@@ -428,12 +425,21 @@ st.markdown("---")
 if menu == "💬 서류 검토 및 상담 (RAG)":
     # Warning check
     if not st.session_state.get("gemini_api_key"):
-        st.warning("⚠️ 사이드바에서 Gemini API Key를 먼저 입력하셔야 질문에 답변할 수 있습니다.")
+        st.warning("⚠️ 왼쪽 상단 햄버거 메뉴(⚙️)를 열어 Gemini API Key를 먼저 입력하셔야 질문에 답변할 수 있습니다.")
         
     # Displays past conversation messages
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["message"])
+            
+    # 입력창 바로 위에 실시간 웹검색 연동 토글 상시 배치
+    enable_search = st.toggle(
+        "🌐 실시간 웹 검색 연동",
+        value=st.session_state.get("enable_search", True),
+        help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
+        key="main_page_web_search_toggle"
+    )
+    st.session_state.enable_search = enable_search
             
     # Input field
     if prompt := st.chat_input("프로젝트 서류 검토 및 기준 법령에 대해 물어보세요..."):
@@ -451,7 +457,7 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                     # 1. API key checks
                     api_key = st.session_state.get("gemini_api_key")
                     if not api_key:
-                        st.error("API Key가 누락되었습니다. 사이드바에서 API Key를 설정해 주세요.")
+                        st.error("API Key가 누락되었습니다. 왼쪽 상단 ⚙️ 설정에서 API Key를 설정해 주세요.")
                         st.stop()
                         
                     # 2. Vector DB search (generate query embedding first)
@@ -499,6 +505,7 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                         "query": prompt,
                         "answer": answer
                     }
+                    st.session_state.scroll_to_top = True
                     st.rerun()
                     
                 except Exception as e:
@@ -514,12 +521,13 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
             learn_title = st.text_input(
                 "질문 키워드/상황 요약:", 
                 value=st.session_state.last_response["query"],
-                help="이 키워드/상황과 유사한 다음 질문이 인입될 때 이 답변이 학습 지식으로 인출되어 답변에 활용됩니다."
+                help="이 키워드/상황과 유사한 다음 질문이 인입될 때 이 답변이 학습 지식으로 인출되어 답변에 활용됩니다.",
+                key="feedback_learn_title_input"
             )
             
             c1, c2 = st.columns([1, 4])
             with c1:
-                if st.button("🌱 학습 등록 완료", type="primary", use_container_width=True):
+                if st.button("🌱 학습 등록 완료", type="primary", use_container_width=True, key="btn_learn_submit"):
                     api_key = st.session_state.get("gemini_api_key")
                     if api_key:
                         with st.spinner("학습 답변 분석 및 지식 인덱싱 생성 중..."):
@@ -561,9 +569,22 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                     else:
                         st.error("API Key가 필요합니다.")
             with c2:
-                if st.button("🗑️ 건너뛰기", use_container_width=True):
+                if st.button("🗑️ 건너뛰기", use_container_width=True, key="btn_skip_feedback"):
                     st.session_state.last_response = None
                     st.rerun()
+
+    # 5. Scroll to top trigger script (Ensures reading from the beginning of response)
+    if st.session_state.get("scroll_to_top", False):
+        st.session_state.scroll_to_top = False
+        scroll_js = """
+        <script>
+            var body = window.parent.document.querySelector(".main");
+            if (body) {
+                body.scrollTop = 0;
+            }
+        </script>
+        """
+        st.markdown(scroll_js, unsafe_allow_html=True)
 
 # ==========================================
 # Menu 2: 지식 관리 및 동기화
