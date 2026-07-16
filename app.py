@@ -179,8 +179,8 @@ st.markdown("""
         will-change: auto !important;
     }
 
-    /* 하단 입력바 결합 제어판 스타일 (Pure CSS fixed 고정) */
-    div[data-key="bottom_control_container"] {
+    /* 하단 입력바 결합 제어판 스타일 (Pure CSS fixed 고정 - 클래스 직접 타겟팅) */
+    div.fixed-bottom-control-box {
         position: fixed !important;
         bottom: 75px !important; /* st.chat_input 바로 위 지점에 고정 */
         left: 0px !important;
@@ -474,24 +474,25 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
         with st.chat_message(msg["role"]):
             st.write(msg["message"])
             
-    # 챗 인풋 위에 고정 탑재될 웹검색/리셋 컨트롤 박스
-    with st.container(key="bottom_control_container"):
-        c_toggle, c_reset = st.columns([3, 1])
-        with c_toggle:
-            enable_search = st.toggle(
-                "🌐 실시간 웹 검색 연동",
-                value=st.session_state.get("enable_search", True),
-                help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
-                key="main_page_web_search_toggle"
-            )
-            st.session_state.enable_search = enable_search
-        with c_reset:
-            if st.button("🧹 대화 기록 리셋", use_container_width=True, key="btn_reset_chat_main"):
-                database.clear_chat_history(st.session_state.session_id)
-                st.session_state.messages = []
-                st.session_state.last_response = None
-                st.toast("대화 기록이 청소되었습니다.")
-                st.rerun()
+    # 챗 인풋 위에 고정 탑재될 웹검색/리셋 컨트롤 박스 (클래스 직접 타겟팅을 위해 HTML div로 포장)
+    st.markdown('<div class="fixed-bottom-control-box">', unsafe_allow_html=True)
+    c_toggle, c_reset = st.columns([3, 1])
+    with c_toggle:
+        enable_search = st.toggle(
+            "🌐 실시간 웹 검색 연동",
+            value=st.session_state.get("enable_search", True),
+            help="고시, 시설기준, 최신 법령 검색이 필요할 때 Google Search를 연동하여 근거를 마련합니다.",
+            key="main_page_web_search_toggle"
+        )
+        st.session_state.enable_search = enable_search
+    with c_reset:
+        if st.button("🧹 대화 기록 리셋", use_container_width=True, key="btn_reset_chat_main"):
+            database.clear_chat_history(st.session_state.session_id)
+            st.session_state.messages = []
+            st.session_state.last_response = None
+            st.toast("대화 기록이 청소되었습니다.")
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
             
