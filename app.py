@@ -193,8 +193,7 @@ if not st.session_state.authenticated:
                 else:
                     st.error("❌ 아이디 또는 비밀번호가 올바르지 않습니다.")
             
-            st.markdown("---")
-            st.info("💡 **최초 로그인 정보**\n- 아이디: `admin` / 비밀번호: `admin1234`\n- 첫 로그인 후 설정 탭에서 관리자 및 일반 사용자 계정을 변경/추가할 수 있습니다.")
+
     st.stop()
 
 # Helper constants
