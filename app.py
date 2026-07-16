@@ -161,61 +161,9 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 핀포인트 감옥 탈출: fixed-bottom-control-box를 포함하는 부모 체인만 정밀하게 transform/contain 해제하여 입력란 찌그러짐 원천 차단 */
-    .stVerticalBlock:has(div.fixed-bottom-control-box),
-    .element-container:has(div.fixed-bottom-control-box) {
-        transform: none !important;
-        perspective: none !important;
-        contain: none !important;
-        will-change: auto !important;
-    }
-
-    /* 하단 하얀색 입력 영역에 묶이는 일체형 제어판 스타일 */
-    div.fixed-bottom-control-box {
-        position: fixed !important;
-        bottom: 60px !important;           /* 챗 인풋 바로 위에 고착 */
-        left: 10% !important;              /* 입력창 너비 정렬 */
-        right: 10% !important;
-        width: 80% !important;
-        box-sizing: border-box !important;
-        z-index: 999999 !important;
-        background-color: #ffffff !important; /* 하얀색 하부 영역 테마 매칭 */
-        color: #0f172a !important;          /* 내부 글씨색 다크화 */
-        padding: 10px 20px !important;
-        border: 1.5px solid #e2e8f0 !important;
-        border-radius: 12px 12px 0 0 !important; /* 상단 모서리 둥글게 결합 */
-        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08) !important;
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-    }
-    
-    /* 토글 텍스트 및 라벨 다크모드/화이트 조화 대응 */
-    div.fixed-bottom-control-box p, 
-    div.fixed-bottom-control-box label,
-    div.fixed-bottom-control-box span {
-        color: #0f172a !important;
-        font-weight: 600 !important;
-    }
-    
-    /* 상단 로고+메뉴 통합 정렬 박스 */
-    div.fixed-top-header-box {
-        text-align: center !important;
-        background-color: #0e1117 !important;
-        padding: 15px !important;
-        border-bottom: 1px solid #1e293b !important;
-        margin-bottom: 2rem !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        gap: 12px !important;
-    }
-    
-    /* 기본 본문 패딩 초기화 및 하단 가림 배려 */
+    /* 기본 본문 패딩 초기화 */
     div.block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 10rem !important;
+        padding-top: 3rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -454,16 +402,18 @@ with st.sidebar:
     )
     st.markdown("---")
 
-# 3. Main Dashboard Layout Header & Menu Navigation Combo
-st.markdown('<div class="fixed-top-header-box">', unsafe_allow_html=True)
+# 3. Main Dashboard Layout Header
 st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
+st.markdown("---")
+
+# Horizontal Navigation Menu (Segmented Control)
 menu = st.segmented_control(
     "📍 메뉴 이동",
     options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
     default="💬 서류 검토 및 상담 (RAG)",
     label_visibility="collapsed"
 )
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("---")
 
 # ==========================================
 # Menu 1: 대화 및 서류 검토
@@ -478,8 +428,7 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
         with st.chat_message(msg["role"]):
             st.write(msg["message"])
             
-    # 챗 인풋 위에 고정 탑재될 웹검색/리셋 컨트롤 박스 (클래스 직접 타겟팅을 위해 HTML div로 포장)
-    st.markdown('<div class="fixed-bottom-control-box">', unsafe_allow_html=True)
+    # 입력창 바로 위에 실시간 웹검색 토글 및 대화 리셋 버튼 수평 가로 배치
     c_toggle, c_reset = st.columns([3, 1])
     with c_toggle:
         enable_search = st.toggle(
@@ -496,7 +445,6 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
             st.session_state.last_response = None
             st.toast("대화 기록이 청소되었습니다.")
             st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
             
