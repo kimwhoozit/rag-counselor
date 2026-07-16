@@ -160,6 +160,19 @@ st.markdown("""
         -webkit-text-fill-color: #ffffff !important;
         background-color: #1e293b !important;
     }
+    
+    /* 상단 메뉴바 스크롤 고정 (Sticky Header) */
+    div[data-key="sticky_nav_container"] {
+        position: -webkit-sticky !important;
+        position: sticky !important;
+        top: 2.875rem !important; /* Streamlit 기본 탑바 높이 바로 아래 고정 */
+        z-index: 99999 !important;
+        background-color: #0e1117 !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        border-bottom: 1.5px solid #1e293b !important;
+        margin-bottom: 1.5rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -400,14 +413,14 @@ with st.sidebar:
 # 3. Main Dashboard Layout Header
 st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
 
-# Horizontal Navigation Menu (Segmented Control)
-menu = st.segmented_control(
-    "📍 메뉴 이동",
-    options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
-    default="💬 서류 검토 및 상담 (RAG)",
-    label_visibility="collapsed"
-)
-st.markdown("---")
+# Horizontal Navigation Menu (Segmented Control wrapped in Sticky Container)
+with st.container(key="sticky_nav_container"):
+    menu = st.segmented_control(
+        "📍 메뉴 이동",
+        options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
+        default="💬 서류 검토 및 상담 (RAG)",
+        label_visibility="collapsed"
+    )
 
 # ==========================================
 # Menu 1: 대화 및 서류 검토
