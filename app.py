@@ -165,6 +165,17 @@ st.markdown("""
     div.block-container {
         padding-top: 3rem !important;
     }
+    
+    /* 대화 영역 자체 스크롤 상자 스타일링 */
+    div[data-key="chat_messages_wrapper"] {
+        max-height: 62vh !important;       /* 화면의 62% 높이로 제한 */
+        overflow-y: auto !important;       /* 텍스트가 넘치면 내부 스크롤바 자동 생성 */
+        padding: 15px !important;
+        border: 1.5px solid #1e293b !important;
+        border-radius: 12px !important;
+        background-color: #0b0f17 !important;
+        margin-bottom: 1rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -423,10 +434,11 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
     if not st.session_state.get("gemini_api_key"):
         st.warning("⚠️ 왼쪽 상단 햄버거 메뉴(⚙️)를 열어 Gemini API Key를 먼저 입력하셔야 질문에 답변할 수 있습니다.")
         
-    # Displays past conversation messages
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.write(msg["message"])
+    # Displays past conversation messages inside a scrollable container
+    with st.container(key="chat_messages_wrapper"):
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.write(msg["message"])
             
     # 입력창 바로 위에 실시간 웹검색 토글 및 대화 리셋 버튼 수평 가로 배치
     c_toggle, c_reset = st.columns([3, 1])
