@@ -161,21 +161,30 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
+    /* 핀포인트 감옥 탈출: fixed-bottom-control-box를 포함하는 부모 체인만 정밀하게 transform/contain 해제하여 입력란 찌그러짐 원천 차단 */
+    .stVerticalBlock:has(div.fixed-bottom-control-box),
+    .element-container:has(div.fixed-bottom-control-box) {
+        transform: none !important;
+        perspective: none !important;
+        contain: none !important;
+        will-change: auto !important;
+    }
+
     /* 하단 하얀색 입력 영역에 묶이는 일체형 제어판 스타일 */
     div.fixed-bottom-control-box {
         position: fixed !important;
         bottom: 60px !important;           /* 챗 인풋 바로 위에 고착 */
-        left: 12% !important;              /* 입력창 너비 정렬 */
-        right: 12% !important;
-        width: 76% !important;
+        left: 10% !important;              /* 입력창 너비 정렬 */
+        right: 10% !important;
+        width: 80% !important;
         box-sizing: border-box !important;
         z-index: 999999 !important;
         background-color: #ffffff !important; /* 하얀색 하부 영역 테마 매칭 */
         color: #0f172a !important;          /* 내부 글씨색 다크화 */
         padding: 10px 20px !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px 8px 0 0 !important; /* 상단 모서리 둥글게 결합 */
-        box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.06) !important;
+        border: 1.5px solid #e2e8f0 !important;
+        border-radius: 12px 12px 0 0 !important; /* 상단 모서리 둥글게 결합 */
+        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08) !important;
         display: flex !important;
         flex-direction: row !important;
         justify-content: space-between !important;
