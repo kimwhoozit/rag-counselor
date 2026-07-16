@@ -55,6 +55,12 @@ if "username" not in st.session_state:
     st.session_state.username = None
 if "role" not in st.session_state:
     st.session_state.role = None
+if "gemini_api_key" not in st.session_state:
+    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+if "sync_queue" not in st.session_state:
+    st.session_state.sync_queue = None
+if "sync_index" not in st.session_state:
+    st.session_state.sync_index = 0
 
 # Custom Premium Styling
 st.markdown("""
@@ -193,6 +199,8 @@ if not st.session_state.authenticated:
                             user_role = u["role"]
                             break
                     st.session_state.role = user_role
+                    # 기본 API Key 백엔드에 강제 주입 (일반 사용자 RAG 질문/검색 실패 방지)
+                    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
                     st.success("로그인 성공!")
                     st.rerun()
                 else:
@@ -792,68 +800,149 @@ elif menu == "📚 구글 드라이브 지식 관리":
                 if not api_key:
                     st.info("💡 동기화를 실행하려면 사이드바에 Gemini API Key를 먼저 입력해 주세요.")
                 else:
-                    if st.button("🔄 구글 드라이브 변경사항 감지 및 동기화 실행", type="primary", use_container_width=True, key="btn_manual_sync"):
-                        with st.spinner("구글 드라이브 API 스캔 및 인덱싱 처리 중..."):
-                            try:
-                                if "GDRIVE_CREDS_JSON" in st.secrets:
-                                    cred_info = st.secrets["GDRIVE_CREDS_JSON"]
-                                    if isinstance(cred_info, str):
-                                        cred_info = json.loads(cred_info)
-                                elif "GDRIVE_CREDS_JSON" in os.environ:
-                                    cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
-                                else:
-                                    with open(GD_CREDS_FILE, "r") as f:
-                                        cred_info = json.load(f)
-                                service = gdrive_service.get_gdrive_service(cred_info)
-                                
-                                remote_files = gdrive_service.list_files_in_folder(service, gdrive_folder_id)
-                                indexed_files = database.get_indexed_files()
-                                
-                                drive_files_state = {}
-                                drive_metadata_map = {}
-                                supported_exts = {'.txt', '.md', '.docx', '.xlsx', '.xls', '.pdf', '.hwpx', '.hwp'}
-                                for rf in remote_files:
-                                    rel_p = rf["rel_path"]
-                                    ext = os.path.splitext(rel_p)[1].lower()
-                                    if ext not in supported_exts:
-                                        continue  # Skip unsupported files like Thumbs.db
-                                    m_epoch = parse_rfc3339(rf["modifiedTime"])
-                                    drive_files_state[rel_p] = m_epoch
-                                    drive_metadata_map[rel_p] = rf
-                                    
-                                added, modified, deleted = calculate_sync_diff(drive_files_state, indexed_files)
-                                total_actions = len(added) + len(modified) + len(deleted)
-                                
-                                if total_actions > 0:
-                                    status_info = st.empty()
-                                    
-                                    for idx, rel_p in enumerate(added + modified):
-                                        status_info.write(f"📥 구글 드라이브에서 파일 다운로드 중 ({idx+1}/{len(added+modified)}): `{rel_p}`...")
-                                        file_info = drive_metadata_map[rel_p]
-                                        local_dest = os.path.join(DOCS_DIR, rel_p)
-                                        final_local_path = gdrive_service.download_file(service, file_info, local_dest)
-                                        
-                                        final_rel_p = os.path.relpath(final_local_path, DOCS_DIR).replace("\\", "/")
-                                        if final_rel_p != rel_p:
-                                            drive_files_state[final_rel_p] = drive_files_state.pop(rel_p)
-                                            if rel_p in added:
-                                                added[added.index(rel_p)] = final_rel_p
-                                            if rel_p in modified:
-                                                modified[modified.index(rel_p)] = final_rel_p
-                                                
-                                    status_info.empty()
-                                    sync_documents(api_key, added, modified, deleted, drive_files_state)
-                                    
-                                    # Backup DB to Google Drive
+                    # 1. 동기화 대기/진행 큐가 세션에 존재할 때 진행바 및 추가 진행 버튼 표시
+                    if st.session_state.sync_queue is not None:
+                        total_tasks = len(st.session_state.sync_queue["tasks"])
+                        current_idx = st.session_state.sync_index
+                        st.warning(f"⏳ **동기화 작업 대기 중**: 총 `{total_tasks}`개의 변경 파일이 있습니다. (현재 진행률: `{current_idx} / {total_tasks}`)")
+                        st.progress(current_idx / total_tasks if total_tasks > 0 else 1.0)
+                        
+                        col_action1, col_action2 = st.columns([1, 1])
+                        with col_action1:
+                            if st.button("🚀 다음 200개 파일 동기화 진행", type="primary", use_container_width=True, key="btn_continue_sync_gd"):
+                                with st.spinner("200개 배치 동기화 처리 중..."):
                                     try:
-                                        gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
-                                    except Exception as backup_err:
-                                        st.warning(f"⚠️ 동기화는 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
-                                    st.rerun()
-                                else:
-                                    st.success("✅ 구글 드라이브와 로컬 데이터베이스의 동기화 상태가 완벽히 일치합니다.")
-                            except Exception as e:
-                                st.error(f"구글 드라이브 동기화 도중 오류 발생: {str(e)}")
+                                        if "GDRIVE_CREDS_JSON" in st.secrets:
+                                            cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                            if isinstance(cred_info, str):
+                                                cred_info = json.loads(cred_info)
+                                        elif "GDRIVE_CREDS_JSON" in os.environ:
+                                            cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                                        else:
+                                            with open(GD_CREDS_FILE, "r") as f:
+                                                cred_info = json.load(f)
+                                        service = gdrive_service.get_gdrive_service(cred_info)
+                                        
+                                        batch_tasks = st.session_state.sync_queue["tasks"][current_idx : current_idx + 200]
+                                        progress_sync = st.progress(0)
+                                        status_sync = st.empty()
+                                        
+                                        for b_idx, task in enumerate(batch_tasks):
+                                            rel_p = task["path"]
+                                            action = task["action"]
+                                            status_sync.write(f"⚙️ ({b_idx+1}/{len(batch_tasks)}) `{rel_p}` 동기화 진행 중 ({action})...")
+                                            
+                                            if action == "delete":
+                                                database.delete_document_by_title_prefix(rel_p)
+                                                database.remove_indexed_file_record(rel_p)
+                                                local_path = os.path.join(DOCS_DIR, rel_p)
+                                                if os.path.exists(local_path):
+                                                    try: os.remove(local_path)
+                                                    except Exception: pass
+                                            elif action in ("add", "modify"):
+                                                file_info = st.session_state.sync_queue["drive_metadata_map"][rel_p]
+                                                local_dest = os.path.join(DOCS_DIR, rel_p)
+                                                final_local_path = gdrive_service.download_file(service, file_info, local_dest)
+                                                final_rel_p = os.path.relpath(final_local_path, DOCS_DIR).replace("\\", "/")
+                                                
+                                                database.delete_document_by_title_prefix(final_rel_p)
+                                                database.remove_indexed_file_record(final_rel_p)
+                                                
+                                                try:
+                                                    content = utils.parse_file(final_local_path)
+                                                    chunks = utils.split_text(content)
+                                                    embeddings = llm_service.get_embeddings_batch(chunks, api_key)
+                                                    
+                                                    for c_idx, chunk in enumerate(chunks):
+                                                        database.add_document(
+                                                            title=f"{final_rel_p} (조각 {c_idx+1})",
+                                                            content=chunk,
+                                                            category="document",
+                                                            embedding=embeddings[c_idx]
+                                                        )
+                                                    mtime = st.session_state.sync_queue["drive_files_state"].get(rel_p, datetime.now().timestamp())
+                                                    database.mark_file_indexed(final_rel_p, mtime)
+                                                except Exception as parse_err:
+                                                    st.error(f"오류 발생 ({rel_p}): {str(parse_err)}")
+                                            
+                                            progress_sync.progress((b_idx + 1) / len(batch_tasks))
+                                            
+                                        status_sync.empty()
+                                        st.session_state.sync_index += len(batch_tasks)
+                                        
+                                        if st.session_state.sync_index >= total_tasks:
+                                            st.session_state.sync_queue = None
+                                            st.session_state.sync_index = 0
+                                            st.success("✨ 전체 구글 드라이브 동기화가 성공적으로 끝났습니다!")
+                                            st.toast("🎉 동기화 전체 완료!", icon="✅")
+                                            
+                                            try: gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
+                                            except Exception: pass
+                                        else:
+                                            st.success(f"이번 배치 분량 동기화 완료! ({st.session_state.sync_index} / {total_tasks})")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"동기화 진행 도중 오류 발생: {str(e)}")
+                        with col_action2:
+                            if st.button("🚫 동기화 작업 강제 취소", type="secondary", use_container_width=True, key="btn_cancel_sync_gd"):
+                                st.session_state.sync_queue = None
+                                st.session_state.sync_index = 0
+                                st.toast("동기화 작업 큐가 초기화되었습니다.")
+                                st.rerun()
+                    else:
+                        # 2. 대기 큐가 없을 때, 구글 드라이브 변경 감지 실행 버튼 제공
+                        if st.button("🔄 구글 드라이브 변경사항 감지 및 동기화 실행", type="primary", use_container_width=True, key="btn_manual_sync"):
+                            with st.spinner("구글 드라이브 API 스캔 처리 중..."):
+                                try:
+                                    if "GDRIVE_CREDS_JSON" in st.secrets:
+                                        cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                        if isinstance(cred_info, str):
+                                            cred_info = json.loads(cred_info)
+                                    elif "GDRIVE_CREDS_JSON" in os.environ:
+                                        cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+                                    else:
+                                        with open(GD_CREDS_FILE, "r") as f:
+                                            cred_info = json.load(f)
+                                    service = gdrive_service.get_gdrive_service(cred_info)
+                                    
+                                    remote_files = gdrive_service.list_files_in_folder(service, gdrive_folder_id)
+                                    indexed_files = database.get_indexed_files()
+                                    
+                                    drive_files_state = {}
+                                    drive_metadata_map = {}
+                                    supported_exts = {'.txt', '.md', '.docx', '.xlsx', '.xls', '.pdf', '.hwpx', '.hwp'}
+                                    for rf in remote_files:
+                                        rel_p = rf["rel_path"]
+                                        ext = os.path.splitext(rel_p)[1].lower()
+                                        if ext not in supported_exts:
+                                            continue
+                                        m_epoch = parse_rfc3339(rf["modifiedTime"])
+                                        drive_files_state[rel_p] = m_epoch
+                                        drive_metadata_map[rel_p] = rf
+                                        
+                                    added, modified, deleted = calculate_sync_diff(drive_files_state, indexed_files)
+                                    
+                                    # 평탄화된 단일 태스크 빌드
+                                    tasks = []
+                                    for p in deleted:
+                                        tasks.append({"action": "delete", "path": p})
+                                    for p in added:
+                                        tasks.append({"action": "add", "path": p})
+                                    for p in modified:
+                                        tasks.append({"action": "modify", "path": p})
+                                        
+                                    if len(tasks) > 0:
+                                        st.session_state.sync_queue = {
+                                            "tasks": tasks,
+                                            "drive_files_state": drive_files_state,
+                                            "drive_metadata_map": drive_metadata_map
+                                        }
+                                        st.session_state.sync_index = 0
+                                        st.rerun()
+                                    else:
+                                        st.success("✅ 구글 드라이브와 로컬 데이터베이스의 동기화 상태가 완벽히 일치합니다.")
+                                except Exception as e:
+                                    st.error(f"구글 드라이브 동기화 도중 오류 발생: {str(e)}")
         else:
             st.warning("⚠️ 구글 서비스 계정 키(.json) 등록 및 드라이브 폴더 ID 입력이 완료되어야 동기화를 진행할 수 있습니다.")
                 
