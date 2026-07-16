@@ -171,29 +171,45 @@ st.markdown("""
         perspective: none !important;
     }
 
-    /* 상단 메뉴바 화면 상단에 완전 고정 (Fixed Header Panel) */
-    div[data-key="sticky_nav_container"] {
+    /* 1. 프로젝트 상담사 타이틀 화면 상단 고정 */
+    .main-title {
         position: fixed !important;
-        top: 0px !important; /* 최상단 고정 */
+        top: 0px !important;
         left: 0px !important;
-        right: 0px !important;
-        width: 100vw !important; /* 화면 가로 폭 100% 꽉 채우기 */
-        box-sizing: border-box !important;
-        z-index: 99999999 !important; /* z-index를 최상위로 격상 */
-        background: #0e1117 !important; /* 투명도 없는 완벽한 고체 배경색 */
+        width: 100vw !important;
+        z-index: 99999998 !important;
         background-color: #0e1117 !important;
+        text-align: center !important;
         padding-top: 15px !important;
-        padding-bottom: 15px !important;
-        padding-left: 5rem !important;
-        padding-right: 5rem !important;
+        padding-bottom: 5px !important;
+        margin: 0 !important;
+        font-size: 1.8rem !important;
+        font-weight: 800 !important;
+    }
+
+    /* 2. 3가지 메뉴바 (SegmentedControl) 타이틀 바로 아래에 밀착 고정 */
+    div[data-testid="stSegmentedControl"] {
+        position: fixed !important;
+        top: 3.5rem !important; /* 타이틀 영역 높이만큼 아래에 밀착 고정 */
+        left: 0px !important;
+        width: 100vw !important;
+        box-sizing: border-box !important;
+        z-index: 99999999 !important; /* 타이틀보다 위 레이어로 배치 */
+        background-color: #0e1117 !important;
+        padding-top: 5px !important;
+        padding-bottom: 12px !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
         margin: 0 !important;
         border-bottom: 1.5px solid #1e293b !important;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5) !important;
+        display: flex !important;
+        justify-content: center !important; /* 중앙 정렬로 심미성 향상 */
     }
     
-    /* 본문 영역 상단을 메뉴바 높이만큼 내려주어 겹침 방지 */
+    /* 3. 본문 영역 상단을 메뉴바와 타이틀 높이만큼 내려주어 겹침 방지 */
     div.block-container {
-        padding-top: 5.5rem !important;
+        padding-top: 8rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
