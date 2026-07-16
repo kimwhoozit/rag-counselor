@@ -166,18 +166,46 @@ st.markdown("""
         padding-top: 3rem !important;
     }
     
-    /* 하단 입력바 결합 제어판 스타일 */
+    /* 모든 레이아웃 래퍼의 containment 및 transform 속성을 풀어 fixed 요소가 화면 하단에 고정되게 조치 */
+    .element-container, 
+    .stVerticalBlock, 
+    .stVerticalBlockBorderWrapper, 
+    [data-testid="stVerticalBlock"],
+    [data-testid="stAppViewBlockContainer"],
+    [data-testid="stAppViewContainer"] {
+        transform: none !important;
+        perspective: none !important;
+        contain: none !important;
+        will-change: auto !important;
+    }
+
+    /* 하단 입력바 결합 제어판 스타일 (Pure CSS fixed 고정) */
     div[data-key="bottom_control_container"] {
-        width: 100% !important;
-        background-color: #0e1117 !important; /* 챗 인풋 컨테이너와 색상 통일 */
-        padding: 8px 16px !important;
+        position: fixed !important;
+        bottom: 75px !important; /* st.chat_input 바로 위 지점에 고정 */
+        left: 0px !important;
+        width: 100vw !important;
+        box-sizing: border-box !important;
+        z-index: 999999 !important; /* 대화 텍스트보다 항상 위에 뜨도록 함 */
+        background-color: #0e1117 !important;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+        padding-left: 20% !important; /* 입력 상자 가로 폭과 나란히 정렬 */
+        padding-right: 20% !important;
         margin: 0 !important;
         border-top: 1.5px solid #1e293b !important;
-        border-bottom: 1px solid #1e293b !important;
+        border-bottom: 1.5px solid #1e293b !important;
+        box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.5) !important;
         display: flex !important;
         flex-direction: row !important;
         justify-content: space-between !important;
         align-items: center !important;
+    }
+    
+    /* 기본 본문 패딩 초기화 */
+    div.block-container {
+        padding-top: 3rem !important;
+        padding-bottom: 8rem !important; /* 하단 고정 바로 인한 컨텐츠 가림 방지 */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -465,24 +493,7 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                 st.toast("대화 기록이 청소되었습니다.")
                 st.rerun()
 
-    # 하단 챗 인풋 상자 내부로 컨트롤 박스를 실시간 병합시키는 폴링 스크립트
-    bottom_transplant_js = """
-    <script>
-        (function() {
-            function transplantBottom() {
-                var p = document;
-                var controls = p.querySelector('div[data-key="bottom_control_container"]');
-                var inputArea = p.querySelector('div[data-testid="stChatInputContainer"]');
-                if (controls && inputArea && controls.parentElement !== inputArea) {
-                    inputArea.insertBefore(controls, inputArea.firstChild);
-                }
-            }
-            transplantBottom();
-            setInterval(transplantBottom, 200);
-        })();
-    </script>
-    """
-    st.markdown(bottom_transplant_js, unsafe_allow_html=True)
+
             
     # Input field
     if prompt := st.chat_input("프로젝트 서류 검토 및 기준 법령에 대해 물어보세요..."):
