@@ -161,6 +161,15 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
+    /* 조상 엘리먼트의 fixed 묶임 해제 (Containment 감옥 탈출) */
+    div.element-container:has(div[data-key="sticky_nav_container"]),
+    div.stVerticalBlock:has(div[data-key="sticky_nav_container"]),
+    div.stVerticalBlockBorderWrapper:has(div[data-key="sticky_nav_container"]),
+    [data-testid="stVerticalBlock"]:has(div[data-key="sticky_nav_container"]) {
+        position: static !important;
+        transform: none !important;
+    }
+
     /* 상단 메뉴바 화면 상단에 완전 고정 (Fixed Header Panel) */
     div[data-key="sticky_nav_container"] {
         position: fixed !important;
