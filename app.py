@@ -161,55 +161,39 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 모든 레이아웃 래퍼의 transform을 일괄 해제하여 position: fixed 요소가 갇히지 않고 화면 상단에 고정되게 조치 */
-    .element-container, 
-    .stVerticalBlock, 
-    .stVerticalBlockBorderWrapper, 
-    [data-testid="stVerticalBlock"],
-    [data-testid="stAppViewBlockContainer"] {
-        transform: none !important;
-        perspective: none !important;
-    }
-
-    /* 1. 프로젝트 상담사 타이틀 화면 상단 고정 */
-    .main-title {
-        position: fixed !important;
-        top: 0px !important;
-        left: 0px !important;
-        width: 100vw !important;
-        z-index: 99999998 !important;
-        background-color: #0e1117 !important;
-        text-align: center !important;
-        padding-top: 15px !important;
-        padding-bottom: 5px !important;
-        margin: 0 !important;
-        font-size: 1.8rem !important;
-        font-weight: 800 !important;
-    }
-
-    /* 2. 3가지 메뉴바 (SegmentedControl) 타이틀 바로 아래에 밀착 고정 */
-    div[data-testid="stSegmentedControl"] {
-        position: fixed !important;
-        top: 3.5rem !important; /* 타이틀 영역 높이만큼 아래에 밀착 고정 */
-        left: 0px !important;
+    /* 상단 메뉴바 고체 래퍼 스타일 (stHeader 내부로 이식되었을 때 최적화) */
+    div[data-key="sticky_nav_container"] {
+        position: relative !important;
         width: 100vw !important;
         box-sizing: border-box !important;
-        z-index: 99999999 !important; /* 타이틀보다 위 레이어로 배치 */
         background-color: #0e1117 !important;
-        padding-top: 5px !important;
-        padding-bottom: 12px !important;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
         padding-left: 2rem !important;
         padding-right: 2rem !important;
         margin: 0 !important;
         border-bottom: 1.5px solid #1e293b !important;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5) !important;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important;
         display: flex !important;
-        justify-content: center !important; /* 중앙 정렬로 심미성 향상 */
+        flex-direction: column !important;
+        align-items: center !important;
+    }
+
+    /* 고정된 상태에서의 메인 타이틀 */
+    .main-title-fixed {
+        font-size: 1.4rem !important;
+        font-weight: 800 !important;
+        margin: 0 !important;
+        margin-bottom: 6px !important;
+        text-align: center !important;
+        background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     
-    /* 3. 본문 영역 상단을 메뉴바와 타이틀 높이만큼 내려주어 겹침 방지 */
+    /* 본문 영역 상단을 고정 헤더 높이만큼 밀어주어 겹침 방지 */
     div.block-container {
-        padding-top: 8rem !important;
+        padding-top: 7rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -448,11 +432,9 @@ with st.sidebar:
     )
     st.markdown("---")
 
-# 3. Main Dashboard Layout Header
-st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
-
-# Horizontal Navigation Menu (Segmented Control wrapped in Sticky Container)
+# 3. Main Dashboard Layout Header & Sticky Navigation Combo
 with st.container(key="sticky_nav_container"):
+    st.markdown('<div class="main-title-fixed">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
     menu = st.segmented_control(
         "📍 메뉴 이동",
         options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
@@ -460,16 +442,16 @@ with st.container(key="sticky_nav_container"):
         label_visibility="collapsed"
     )
     
-    # JS transplant snippet to escape Streamlit's container clipping constraints
+    # JS transplant snippet to escape CORS sandbox limits by appending to local iframe stHeader
     transplant_js = """
     <script>
         (function() {
             function transplant() {
-                var p = window.parent.document;
+                var p = document; // Avoid using window.parent to bypass CORS sandbox restrictions
                 var nav = p.querySelector('div[data-key="sticky_nav_container"]');
-                var main = p.querySelector('.main');
-                if (nav && main && nav.parentElement !== main) {
-                    main.insertBefore(nav, main.firstChild);
+                var header = p.querySelector('header[data-testid="stHeader"]');
+                if (nav && header && nav.parentElement !== header) {
+                    header.appendChild(nav);
                 }
             }
             transplant();
