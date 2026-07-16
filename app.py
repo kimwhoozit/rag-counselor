@@ -161,20 +161,24 @@ st.markdown("""
         background-color: #1e293b !important;
     }
     
-    /* 상단 메뉴바 화면 상단에 완전 고정 (Fixed Header) */
+    /* 상단 메뉴바 화면 상단에 완전 고정 (Fixed Header Panel) */
     div[data-key="sticky_nav_container"] {
         position: fixed !important;
-        top: 0px !important; /* 최상단에 완전 고정 */
+        top: 0px !important; /* 최상단 고정 */
         left: 0px !important;
         right: 0px !important;
+        width: 100vw !important; /* 화면 가로 폭 100% 꽉 채우기 */
+        box-sizing: border-box !important;
         z-index: 99999 !important;
+        background: #0e1117 !important; /* 투명도 없는 완벽한 고체 배경색 */
         background-color: #0e1117 !important;
         padding-top: 15px !important;
         padding-bottom: 15px !important;
-        padding-left: 5rem !important; /* 좌우 마진 조율 */
+        padding-left: 5rem !important;
         padding-right: 5rem !important;
+        margin: 0 !important;
         border-bottom: 1.5px solid #1e293b !important;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3) !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5) !important;
     }
     
     /* 본문 영역 상단을 메뉴바 높이만큼 내려주어 겹침 방지 */
