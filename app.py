@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="프로젝트 성장형 AI 상담사",
     page_icon="🌱",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # Initialize Database & Attempt Recovery if missing
@@ -159,17 +159,6 @@ st.markdown("""
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
         background-color: #1e293b !important;
-    }
-    
-    /* 대화 메시지들(stChatMessage)을 감싸는 세로 박스만 콕 집어 자체 이중 스크롤 장착 */
-    div[data-testid="stVerticalBlock"]:has(div[data-testid="stChatMessage"]) {
-        max-height: 62vh !important;       /* 화면 높이의 62%로 제한 */
-        overflow-y: auto !important;       /* 대화가 넘치면 박스 내부에서만 스크롤 */
-        padding: 15px !important;
-        border: 1.5px solid #1e293b !important;
-        border-radius: 12px !important;
-        background-color: #0b0f17 !important;
-        margin-bottom: 1rem !important;
     }
     
     /* 기본 본문 패딩 초기화 */
@@ -369,9 +358,22 @@ if not st.session_state.messages:
     db_history = database.get_chat_history(st.session_state.session_id)
     st.session_state.messages = db_history
 
-# 2. Sidebar Layout (Options & Settings Popup Panel)
+# 2. Sidebar Layout (Navigation & Options Panel)
 with st.sidebar:
-    st.markdown('<div style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">⚙️ 설정 및 시스템 관리</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
+    
+    # Sidebar Navigation Menu (Always Fixed)
+    menu = st.radio(
+        "📌 대시보드 메뉴 선택",
+        options=[
+            "💬 서류 검토 및 상담 (RAG)",
+            "📚 구글 드라이브 지식 관리",
+            "⚙️ 시스템 설정 및 가이드"
+        ],
+        index=0
+    )
+    
+    st.markdown("---")
     
     # Active User Info
     st.markdown(f"👤 **접속 계정**: `{st.session_state.username}`")
@@ -415,15 +417,6 @@ with st.sidebar:
 
 # 3. Main Dashboard Layout Header
 st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
-st.markdown("---")
-
-# Horizontal Navigation Menu (Segmented Control)
-menu = st.segmented_control(
-    "📍 메뉴 이동",
-    options=["💬 서류 검토 및 상담 (RAG)", "📚 구글 드라이브 지식 관리", "⚙️ 시스템 설정 및 가이드"],
-    default="💬 서류 검토 및 상담 (RAG)",
-    label_visibility="collapsed"
-)
 st.markdown("---")
 
 # ==========================================
