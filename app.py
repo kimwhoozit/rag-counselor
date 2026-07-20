@@ -22,6 +22,9 @@ st.set_page_config(
 DB_PATH = "knowledge_base.db"
 GD_CREDS_FILE = "gdrive_credentials.json"
 
+if "db_recovery_status" not in st.session_state:
+    st.session_state.db_recovery_status = "ok"
+
 if not os.path.exists(DB_PATH):
     # Try to download from Google Drive
     gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
@@ -38,9 +41,19 @@ if not os.path.exists(DB_PATH):
                 with open(GD_CREDS_FILE, "r") as f:
                     cred_info = json.load(f)
             service = gdrive_service.get_gdrive_service(cred_info)
-            gdrive_service.download_db_file(service, gdrive_folder_id, DB_PATH)
-        except Exception:
-            pass # Fallback to default init_db
+            success = gdrive_service.download_db_file(service, gdrive_folder_id, DB_PATH)
+            if success:
+                st.session_state.db_recovery_status = "success"
+                print("✅ [Startup] 구글 드라이브로부터 백업 DB 복구 성공!")
+            else:
+                st.session_state.db_recovery_status = "not_found"
+                print("⚠️ [Startup] 구글 드라이브에 백업 DB(knowledge_base.db) 파일이 존재하지 않습니다.")
+        except Exception as e:
+            st.session_state.db_recovery_status = f"error: {str(e)}"
+            print(f"❌ [Startup] 구글 드라이브 DB 복구 중 에러 발생: {str(e)}")
+    else:
+        st.session_state.db_recovery_status = "no_credentials"
+        print("⚠️ [Startup] 구글 드라이브 연동 설정(자격증명 또는 폴더 ID)이 누락되어 백업 DB 복구를 건너뜁니다.")
 
 database.init_db()
 
@@ -61,6 +74,25 @@ if "sync_queue" not in st.session_state:
     st.session_state.sync_queue = None
 if "sync_index" not in st.session_state:
     st.session_state.sync_index = 0
+
+# Try to extract client_email for UI display and troubleshooting
+if "client_email" not in st.session_state:
+    st.session_state.client_email = "알 수 없음 (자격증명 미등록)"
+    try:
+        has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+        if has_credentials:
+            if "GDRIVE_CREDS_JSON" in st.secrets:
+                cred_data = st.secrets["GDRIVE_CREDS_JSON"]
+                if isinstance(cred_data, str):
+                    cred_data = json.loads(cred_data)
+            elif "GDRIVE_CREDS_JSON" in os.environ:
+                cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
+            else:
+                with open(GD_CREDS_FILE, "r") as f:
+                    cred_data = json.load(f)
+            st.session_state.client_email = cred_data.get("client_email", "")
+    except Exception:
+        pass
 
 # Custom Premium Styling
 st.markdown("""
@@ -214,6 +246,24 @@ DOCS_DIR = "documents"
 GD_CREDS_FILE = "gdrive_credentials.json"
 
 # Utility functions
+def handle_backup_error(error_obj):
+    err_str = str(error_obj)
+    if "storageQuotaExceeded" in err_str or "storage quota" in err_str.lower():
+        email_addr = st.session_state.get("client_email", "서비스 계정 이메일")
+        st.error(f"""
+        ⚠️ **구글 드라이브 백업 실패 (스토리지 용량 초과)**
+        
+        구글 서비스 계정(Service Account)은 기본적으로 0바이트의 개인 스토리지만을 가집니다. 따라서 개인 폴더에는 파일을 직접 백업(소유)하여 생성할 수 없습니다.
+        
+        **해결 방법 (공유 드라이브 권장)**:
+        1. 구글 드라이브에서 개인 폴더 대신 **'공유 드라이브(Shared Drive)'**를 새로 생성합니다.
+        2. 생성한 공유 드라이브의 멤버 공유 설정에 아래 서비스 계정 이메일을 **콘텐츠 관리자** 또는 **편집자** 권한으로 추가합니다:
+           👉 `{email_addr}`
+        3. 해당 공유 드라이브 내에 폴더를 만들어 그 폴더 ID를 대시보드(또는 `secrets.toml`)에 입력하고 다시 동기화를 시도해 주세요.
+        """)
+    else:
+        st.warning(f"⚠️ 데이터베이스 백업에 실패했습니다: {err_str}")
+
 def scan_documents_folder():
     """Scans the DOCS_DIR recursively and returns a dict mapping relative path -> last_modified_time."""
     if not os.path.exists(DOCS_DIR):
@@ -412,6 +462,20 @@ with st.sidebar:
 
 # 3. Main Dashboard Layout Header
 st.markdown('<div class="main-title">🌱 프로젝트 상담사</div>', unsafe_allow_html=True)
+
+# DB 복구 상태 진단 및 경고 출력
+if st.session_state.get("db_recovery_status") == "not_found":
+    st.warning("⚠️ **시스템 안내**: 구글 드라이브 폴더 내에 기존 백업 DB(`knowledge_base.db`) 파일이 존재하지 않습니다. 새로운 데이터베이스로 동작을 시작합니다. '구글 드라이브 지식 관리' 메뉴에서 동기화를 진행하여 백업을 활성화해주세요.")
+elif st.session_state.get("db_recovery_status") == "no_credentials":
+    st.info("💡 **알림**: 구글 드라이브 연동용 자격증명(JSON) 또는 폴더 ID 설정이 누락되어 자동 백업 DB 복구를 진행하지 못했습니다. 로컬 환경에 저장된 기존 DB로 계속 진행하거나, 시스템 설정 파일(`secrets.toml`)을 확인해주세요.")
+elif isinstance(st.session_state.get("db_recovery_status"), str) and st.session_state.db_recovery_status.startswith("error:"):
+    err_msg = st.session_state.db_recovery_status.replace("error: ", "")
+    st.error(f"❌ **데이터베이스 복구 실패**: 구글 드라이브 백업 DB를 가져오는 중 오류가 발생했습니다. (오류 메시지: `{err_msg}`). 로컬 DB가 초기화되었을 수 있으니 구글 드라이브 권한 및 네트워크 연결 상태를 확인해주세요.")
+elif st.session_state.get("db_recovery_status") == "success":
+    st.success("✅ **보안 복구 완료**: 장기 미사용으로 유실되었던 로컬 데이터베이스를 구글 드라이브의 최신 백업본에서 안전하게 복구하였습니다.")
+    # 한 번 성공 메시지를 보여준 뒤, 재렌더링 시에는 메시지가 사라지도록 상태를 변경합니다.
+    st.session_state.db_recovery_status = "ok"
+
 st.markdown("---")
 
 # Horizontal Navigation Menu (Segmented Control)
@@ -575,7 +639,7 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                                         service = gdrive_service.get_gdrive_service(cred_info)
                                         gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
                                 except Exception as backup_err:
-                                    st.warning(f"⚠️ 학습 등록은 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                                    handle_backup_error(backup_err)
                                 
                                 st.session_state.last_response = None
                                 st.rerun()
@@ -784,7 +848,7 @@ elif menu == "📚 구글 드라이브 지식 관리":
                                 try:
                                     gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
                                 except Exception as backup_err:
-                                    st.warning(f"⚠️ 업로드는 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                                    handle_backup_error(backup_err)
                                 
                                 st.rerun()
                             except Exception as e:
@@ -876,8 +940,10 @@ elif menu == "📚 구글 드라이브 지식 관리":
                                             st.success("✨ 전체 구글 드라이브 동기화가 성공적으로 끝났습니다!")
                                             st.toast("🎉 동기화 전체 완료!", icon="✅")
                                             
-                                            try: gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
-                                            except Exception: pass
+                                            try:
+                                                gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
+                                            except Exception as backup_err:
+                                                handle_backup_error(backup_err)
                                         else:
                                             st.success(f"이번 배치 분량 동기화 완료! ({st.session_state.sync_index} / {total_tasks})")
                                         st.rerun()
@@ -1013,7 +1079,7 @@ elif menu == "📚 구글 드라이브 지식 관리":
                                 service = gdrive_service.get_gdrive_service(cred_info)
                                 gdrive_service.upload_db_file(service, gdrive_folder_id, DB_PATH)
                         except Exception as backup_err:
-                            st.warning(f"⚠️ 지식 삭제는 완료되었으나 DB 백업에 실패했습니다: {str(backup_err)}")
+                            handle_backup_error(backup_err)
                             
                         st.rerun()
             else:

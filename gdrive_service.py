@@ -10,7 +10,7 @@ def get_gdrive_service(credentials_info: Dict[str, Any]):
     try:
         creds = service_account.Credentials.from_service_account_info(
             credentials_info,
-            scopes=['https://www.googleapis.com/auth/drive.readonly']
+            scopes=['https://www.googleapis.com/auth/drive']
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
