@@ -8,6 +8,10 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 def get_gdrive_service(credentials_info: Dict[str, Any]):
     """Authenticates with Google Drive API using Service Account credentials JSON."""
     try:
+        # Pre-process private_key to handle TOML/JSON parsing escape discrepancies
+        if "private_key" in credentials_info and isinstance(credentials_info["private_key"], str):
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+
         creds = service_account.Credentials.from_service_account_info(
             credentials_info,
             scopes=['https://www.googleapis.com/auth/drive']
