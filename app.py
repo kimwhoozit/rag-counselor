@@ -818,7 +818,7 @@ elif menu == "📚 구글 드라이브 지식 관리":
                             st.info("⏸️ 자동 동기화 진행이 일시 정지되었습니다. 재개하려면 위의 시작/재개 버튼을 눌러주세요.")
 
                         if st.session_state.sync_active and current_idx < total_tasks:
-                            with st.spinner("100개 배치 동기화 처리 중...").__enter__():
+                            with st.spinner("100개 배치 동기화 처리 중..."):
                                 try:
                                     if "GDRIVE_CREDS_JSON" in st.secrets:
                                         cred_info = st.secrets["GDRIVE_CREDS_JSON"]
