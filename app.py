@@ -19,24 +19,46 @@ st.set_page_config(
 )
 
 # Initialize Database & Attempt Recovery if missing
-DB_PATH = "knowledge_base.db"
-GD_CREDS_FILE = "gdrive_credentials.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "knowledge_base.db")
+GD_CREDS_FILE = os.path.join(BASE_DIR, "gdrive_credentials.json")
+DOCS_DIR = os.path.join(BASE_DIR, "documents")
+SECRETS_PATH = os.path.join(BASE_DIR, ".streamlit", "secrets.toml")
+
+# Manual secrets fallback loader (in case Streamlit is run from parent directory)
+manual_secrets = {}
+if os.path.exists(SECRETS_PATH):
+    try:
+        import toml
+        manual_secrets = toml.load(SECRETS_PATH)
+    except Exception as e:
+        print(f"⚠️ [Startup] secrets.toml 수동 로드 실패: {e}")
+
+def get_secret(key, default=None):
+    """Retrieves secret from Streamlit secrets, manual secrets fallback, or environment variables."""
+    if key in st.secrets:
+        return st.secrets[key]
+    if key in manual_secrets:
+        return manual_secrets[key]
+    return os.environ.get(key, default)
+
+def has_secret(key):
+    """Checks if secret exists in st.secrets, manual secrets, or environment variables."""
+    return key in st.secrets or key in manual_secrets or key in os.environ
 
 if "db_recovery_status" not in st.session_state:
     st.session_state.db_recovery_status = "ok"
 
 if not os.path.exists(DB_PATH):
     # Try to download from Google Drive
-    gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
-    has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+    gdrive_folder_id = get_secret("gdrive_folder_id", "")
+    has_credentials = os.path.exists(GD_CREDS_FILE) or has_secret("GDRIVE_CREDS_JSON")
     if has_credentials and gdrive_folder_id:
         try:
-            if "GDRIVE_CREDS_JSON" in st.secrets:
-                cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+            if has_secret("GDRIVE_CREDS_JSON"):
+                cred_info = get_secret("GDRIVE_CREDS_JSON")
                 if isinstance(cred_info, str):
                     cred_info = json.loads(cred_info)
-            elif "GDRIVE_CREDS_JSON" in os.environ:
-                cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
             else:
                 with open(GD_CREDS_FILE, "r") as f:
                     cred_info = json.load(f)
@@ -69,11 +91,11 @@ if "username" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state.role = None
 if "gemini_api_key" not in st.session_state:
-    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+    st.session_state.gemini_api_key = get_secret("GEMINI_API_KEY", "")
 if "gemini_api_key_sub1" not in st.session_state:
-    st.session_state.gemini_api_key_sub1 = st.secrets.get("GEMINI_API_KEY_SUB1", os.environ.get("GEMINI_API_KEY_SUB1", ""))
+    st.session_state.gemini_api_key_sub1 = get_secret("GEMINI_API_KEY_SUB1", "")
 if "gemini_api_key_sub2" not in st.session_state:
-    st.session_state.gemini_api_key_sub2 = st.secrets.get("GEMINI_API_KEY_SUB2", os.environ.get("GEMINI_API_KEY_SUB2", ""))
+    st.session_state.gemini_api_key_sub2 = get_secret("GEMINI_API_KEY_SUB2", "")
 
 def get_all_api_keys():
     """Helper to return a list of active API keys in priority order."""
@@ -84,7 +106,7 @@ def get_all_api_keys():
             keys.append(val.strip())
     if not keys:
         for k in ["GEMINI_API_KEY", "GEMINI_API_KEY_SUB1", "GEMINI_API_KEY_SUB2"]:
-            env_val = st.secrets.get(k, os.environ.get(k, ""))
+            env_val = get_secret(k, "")
             if env_val and env_val.strip():
                 keys.append(env_val.strip())
     return keys
@@ -101,14 +123,12 @@ if "sync_index" not in st.session_state:
 if "client_email" not in st.session_state:
     st.session_state.client_email = "알 수 없음 (자격증명 미등록)"
     try:
-        has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+        has_credentials = os.path.exists(GD_CREDS_FILE) or has_secret("GDRIVE_CREDS_JSON")
         if has_credentials:
-            if "GDRIVE_CREDS_JSON" in st.secrets:
-                cred_data = st.secrets["GDRIVE_CREDS_JSON"]
+            if has_secret("GDRIVE_CREDS_JSON"):
+                cred_data = get_secret("GDRIVE_CREDS_JSON")
                 if isinstance(cred_data, str):
                     cred_data = json.loads(cred_data)
-            elif "GDRIVE_CREDS_JSON" in os.environ:
-                cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
             else:
                 with open(GD_CREDS_FILE, "r") as f:
                     cred_data = json.load(f)
@@ -254,7 +274,7 @@ if not st.session_state.authenticated:
                             break
                     st.session_state.role = user_role
                     # 기본 API Key 백엔드에 강제 주입 (일반 사용자 RAG 질문/검색 실패 방지)
-                    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+                    st.session_state.gemini_api_key = get_secret("GEMINI_API_KEY", "")
                     st.success("로그인 성공!")
                     st.rerun()
                 else:
@@ -264,8 +284,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # Helper constants
-DOCS_DIR = "documents"
-GD_CREDS_FILE = "gdrive_credentials.json"
+# Already defined as absolute paths relative to BASE_DIR at the top
 
 # Utility functions
 def handle_backup_error(error_obj):
@@ -475,9 +494,9 @@ with st.sidebar:
     
     # API Configuration (Only visible to admin)
     if st.session_state.role == "admin":
-        env_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
-        env_sub1 = st.secrets.get("GEMINI_API_KEY_SUB1", os.environ.get("GEMINI_API_KEY_SUB1", ""))
-        env_sub2 = st.secrets.get("GEMINI_API_KEY_SUB2", os.environ.get("GEMINI_API_KEY_SUB2", ""))
+        env_api_key = get_secret("GEMINI_API_KEY", "")
+        env_sub1 = get_secret("GEMINI_API_KEY_SUB1", "")
+        env_sub2 = get_secret("GEMINI_API_KEY_SUB2", "")
         
         st.markdown("#### 🔑 API Key 설정")
         api_key_input = st.text_input(
@@ -687,15 +706,13 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                                 
                                 # Backup DB to Google Drive
                                 try:
-                                    gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
-                                    has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+                                    gdrive_folder_id = get_secret("gdrive_folder_id", "")
+                                    has_credentials = os.path.exists(GD_CREDS_FILE) or has_secret("GDRIVE_CREDS_JSON")
                                     if has_credentials and gdrive_folder_id:
-                                        if "GDRIVE_CREDS_JSON" in st.secrets:
-                                            cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                        if has_secret("GDRIVE_CREDS_JSON"):
+                                            cred_info = get_secret("GDRIVE_CREDS_JSON")
                                             if isinstance(cred_info, str):
                                                 cred_info = json.loads(cred_info)
-                                        elif "GDRIVE_CREDS_JSON" in os.environ:
-                                            cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                                         else:
                                             with open(GD_CREDS_FILE, "r") as f:
                                                 cred_info = json.load(f)
@@ -761,7 +778,7 @@ elif menu == "📚 구글 드라이브 지식 관리":
             st.write("구글 클라우드 서비스 계정 키(JSON)와 동기화할 폴더 ID를 설정합니다.")
             
             # Google Drive configuration inputs
-            env_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
+            env_folder_id = get_secret("gdrive_folder_id", "")
             raw_folder_id = st.text_input(
                 "구글 드라이브 폴더 ID (Folder ID) 또는 URL:",
                 value=st.session_state.get("gdrive_folder_id", env_folder_id),
@@ -799,15 +816,13 @@ elif menu == "📚 구글 드라이브 지식 관리":
                 st.rerun()
                 
             # Derived Service Account info
-            has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+            has_credentials = os.path.exists(GD_CREDS_FILE) or has_secret("GDRIVE_CREDS_JSON")
             if has_credentials:
                 try:
-                    if "GDRIVE_CREDS_JSON" in st.secrets:
-                        cred_data = st.secrets["GDRIVE_CREDS_JSON"]
+                    if has_secret("GDRIVE_CREDS_JSON"):
+                        cred_data = get_secret("GDRIVE_CREDS_JSON")
                         if isinstance(cred_data, str):
                             cred_data = json.loads(cred_data)
-                    elif "GDRIVE_CREDS_JSON" in os.environ:
-                        cred_data = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                     else:
                         with open(GD_CREDS_FILE, "r") as f:
                             cred_data = json.load(f)
@@ -821,6 +836,33 @@ elif menu == "📚 구글 드라이브 지식 관리":
                 except Exception as e:
                     st.error(f"구글 서비스 계정 자격증명 파싱 실패: {str(e)}")
             
+        # Section B: 구글 드라이브 백업 DB 복구
+        if has_credentials and gdrive_folder_id:
+            st.markdown("")
+            with st.container(border=True):
+                st.markdown("#### 📥 구글 드라이브 백업 DB 복구")
+                st.write("구글 드라이브에 저장된 최신 백업 `knowledge_base.db` 파일을 다운로드하여 로컬 DB를 덮어씁니다.")
+                if st.button("📥 백업 DB 다운로드 실행 (기존 로컬 DB 덮어쓰기)", type="secondary", use_container_width=True, key="btn_download_db_gd"):
+                    with st.spinner("구글 드라이브로부터 백업 DB 다운로드 중..."):
+                        try:
+                            if has_secret("GDRIVE_CREDS_JSON"):
+                                cred_info = get_secret("GDRIVE_CREDS_JSON")
+                                if isinstance(cred_info, str):
+                                    cred_info = json.loads(cred_info)
+                            else:
+                                with open(GD_CREDS_FILE, "r") as f:
+                                    cred_info = json.load(f)
+                            service = gdrive_service.get_gdrive_service(cred_info)
+                            success = gdrive_service.download_db_file(service, gdrive_folder_id, DB_PATH)
+                            if success:
+                                st.success("✅ 구글 드라이브로부터 백업 DB를 성공적으로 다운로드하여 적용했습니다!")
+                                st.toast("✅ DB 복구 완료!", icon="🎉")
+                                st.rerun()
+                            else:
+                                st.error("❌ 구글 드라이브에 백업 DB(`knowledge_base.db`) 파일이 존재하지 않습니다.")
+                        except Exception as e:
+                            st.error(f"❌ DB 복구 중 에러 발생: {str(e)}")
+                            
         # Section C: 구글 드라이브 수동 동기화
         if has_credentials and gdrive_folder_id:
             st.markdown("")
@@ -866,12 +908,10 @@ elif menu == "📚 구글 드라이브 지식 관리":
                         if st.session_state.sync_active and current_idx < total_tasks:
                             with st.spinner("100개 배치 동기화 처리 중..."):
                                 try:
-                                    if "GDRIVE_CREDS_JSON" in st.secrets:
-                                        cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                    if has_secret("GDRIVE_CREDS_JSON"):
+                                        cred_info = get_secret("GDRIVE_CREDS_JSON")
                                         if isinstance(cred_info, str):
                                             cred_info = json.loads(cred_info)
-                                    elif "GDRIVE_CREDS_JSON" in os.environ:
-                                        cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                                     else:
                                         with open(GD_CREDS_FILE, "r") as f:
                                             cred_info = json.load(f)
@@ -949,12 +989,10 @@ elif menu == "📚 구글 드라이브 지식 관리":
                         if st.button("🔄 구글 드라이브 변경사항 감지 및 동기화 실행", type="primary", use_container_width=True, key="btn_manual_sync"):
                             with st.spinner("구글 드라이브 API 스캔 처리 중..."):
                                 try:
-                                    if "GDRIVE_CREDS_JSON" in st.secrets:
-                                        cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                    if has_secret("GDRIVE_CREDS_JSON"):
+                                        cred_info = get_secret("GDRIVE_CREDS_JSON")
                                         if isinstance(cred_info, str):
                                             cred_info = json.loads(cred_info)
-                                    elif "GDRIVE_CREDS_JSON" in os.environ:
-                                        cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                                     else:
                                         with open(GD_CREDS_FILE, "r") as f:
                                             cred_info = json.load(f)
@@ -1054,15 +1092,13 @@ elif menu == "📚 구글 드라이브 지식 관리":
                         
                         # Backup DB to Google Drive
                         try:
-                            gdrive_folder_id = st.secrets.get("gdrive_folder_id", os.environ.get("gdrive_folder_id", ""))
-                            has_credentials = os.path.exists(GD_CREDS_FILE) or "GDRIVE_CREDS_JSON" in os.environ or "GDRIVE_CREDS_JSON" in st.secrets
+                            gdrive_folder_id = get_secret("gdrive_folder_id", "")
+                            has_credentials = os.path.exists(GD_CREDS_FILE) or has_secret("GDRIVE_CREDS_JSON")
                             if has_credentials and gdrive_folder_id:
-                                if "GDRIVE_CREDS_JSON" in st.secrets:
-                                    cred_info = st.secrets["GDRIVE_CREDS_JSON"]
+                                if has_secret("GDRIVE_CREDS_JSON"):
+                                    cred_info = get_secret("GDRIVE_CREDS_JSON")
                                     if isinstance(cred_info, str):
                                         cred_info = json.loads(cred_info)
-                                elif "GDRIVE_CREDS_JSON" in os.environ:
-                                    cred_info = json.loads(os.environ["GDRIVE_CREDS_JSON"])
                                 else:
                                     with open(GD_CREDS_FILE, "r") as f:
                                         cred_info = json.load(f)

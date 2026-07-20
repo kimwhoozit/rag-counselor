@@ -3,7 +3,9 @@ import json
 import numpy as np
 from typing import List, Dict, Any
 
-DB_PATH = "knowledge_base.db"
+import os
+DB_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(DB_DIR, "knowledge_base.db")
 
 def init_db():
     """Initializes the database by creating tables if they do not exist."""
