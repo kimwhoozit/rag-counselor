@@ -70,6 +70,28 @@ if "role" not in st.session_state:
     st.session_state.role = None
 if "gemini_api_key" not in st.session_state:
     st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+if "gemini_api_key_sub1" not in st.session_state:
+    st.session_state.gemini_api_key_sub1 = st.secrets.get("GEMINI_API_KEY_SUB1", os.environ.get("GEMINI_API_KEY_SUB1", ""))
+if "gemini_api_key_sub2" not in st.session_state:
+    st.session_state.gemini_api_key_sub2 = st.secrets.get("GEMINI_API_KEY_SUB2", os.environ.get("GEMINI_API_KEY_SUB2", ""))
+
+def get_all_api_keys():
+    """Helper to return a list of active API keys in priority order."""
+    keys = []
+    for k in ["gemini_api_key", "gemini_api_key_sub1", "gemini_api_key_sub2"]:
+        val = st.session_state.get(k, "")
+        if val and val.strip():
+            keys.append(val.strip())
+    if not keys:
+        for k in ["GEMINI_API_KEY", "GEMINI_API_KEY_SUB1", "GEMINI_API_KEY_SUB2"]:
+            env_val = st.secrets.get(k, os.environ.get(k, ""))
+            if env_val and env_val.strip():
+                keys.append(env_val.strip())
+    return keys
+
+def has_any_api_key():
+    """Returns True if at least one API key is configured."""
+    return len(get_all_api_keys()) > 0
 if "sync_queue" not in st.session_state:
     st.session_state.sync_queue = None
 if "sync_index" not in st.session_state:
@@ -454,16 +476,40 @@ with st.sidebar:
     # API Configuration (Only visible to admin)
     if st.session_state.role == "admin":
         env_api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+        env_sub1 = st.secrets.get("GEMINI_API_KEY_SUB1", os.environ.get("GEMINI_API_KEY_SUB1", ""))
+        env_sub2 = st.secrets.get("GEMINI_API_KEY_SUB2", os.environ.get("GEMINI_API_KEY_SUB2", ""))
+        
         st.markdown("#### 🔑 API Key 설정")
         api_key_input = st.text_input(
-            "Gemini API Key:",
+            "Gemini API Key (기본):",
             type="password",
             value=st.session_state.get("gemini_api_key", env_api_key),
-            help="Google AI Studio에서 발급받은 Gemini API Key를 입력하세요.",
+            help="Google AI Studio에서 발급받은 기본 Gemini API Key를 입력하세요.",
             key="gdrive_api_key_input"
         )
         if api_key_input:
             st.session_state.gemini_api_key = api_key_input
+            
+        api_key_sub1_input = st.text_input(
+            "Gemini API Key (보조 1):",
+            type="password",
+            value=st.session_state.get("gemini_api_key_sub1", env_sub1),
+            help="기본 키 할당량 초과 시 사용할 첫 번째 보조 API Key입니다.",
+            key="gdrive_api_key_sub1_input"
+        )
+        if api_key_sub1_input:
+            st.session_state.gemini_api_key_sub1 = api_key_sub1_input
+            
+        api_key_sub2_input = st.text_input(
+            "Gemini API Key (보조 2):",
+            type="password",
+            value=st.session_state.get("gemini_api_key_sub2", env_sub2),
+            help="첫 번째 보조 키까지 초과 시 사용할 두 번째 보조 API Key입니다.",
+            key="gdrive_api_key_sub2_input"
+        )
+        if api_key_sub2_input:
+            st.session_state.gemini_api_key_sub2 = api_key_sub2_input
+            
         st.markdown("---")
     
     # Model Configuration
@@ -509,7 +555,7 @@ st.markdown("---")
 # ==========================================
 if menu == "💬 서류 검토 및 상담 (RAG)":
     # Warning check
-    if not st.session_state.get("gemini_api_key"):
+    if not has_any_api_key():
         st.warning("⚠️ 왼쪽 상단 햄버거 메뉴(⚙️)를 열어 Gemini API Key를 먼저 입력하셔야 질문에 답변할 수 있습니다.")
         
     # Displays past conversation messages
@@ -551,13 +597,13 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
             with st.spinner("로컬 지식베이스 검색 및 외부 법령/기준 검토 중..."):
                 try:
                     # 1. API key checks
-                    api_key = st.session_state.get("gemini_api_key")
-                    if not api_key:
+                    api_keys = get_all_api_keys()
+                    if not api_keys:
                         st.error("API Key가 누락되었습니다. 왼쪽 상단 ⚙️ 설정에서 API Key를 설정해 주세요.")
                         st.stop()
                         
                     # 2. Vector DB search (generate query embedding first)
-                    query_embedding = llm_service.get_embedding(prompt, api_key)
+                    query_embedding = llm_service.get_embedding(prompt, api_keys)
                     # Search documents in both category
                     retrieved_docs = database.search_similar_documents(query_embedding, limit=5)
                     
@@ -566,7 +612,7 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                         query=prompt,
                         retrieved_docs=retrieved_docs,
                         chat_history=st.session_state.messages[:-1], # pass previous history
-                        api_key=api_key,
+                        api_key=api_keys,
                         enable_search=enable_search,
                         model_name=selected_model
                     )
@@ -624,12 +670,12 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
             c1, c2 = st.columns([1, 4])
             with c1:
                 if st.button("🌱 학습 등록 완료", type="primary", use_container_width=True, key="btn_learn_submit"):
-                    api_key = st.session_state.get("gemini_api_key")
-                    if api_key:
+                    api_keys = get_all_api_keys()
+                    if api_keys:
                         with st.spinner("학습 답변 분석 및 지식 인덱싱 생성 중..."):
                             try:
                                 combined_text = f"상황/질문: {learn_title}\n검토된 모범 답변: {st.session_state.last_response['answer']}"
-                                emb = llm_service.get_embedding(combined_text, api_key)
+                                emb = llm_service.get_embedding(combined_text, api_keys)
                                 
                                 database.add_document(
                                     title=learn_title,
@@ -707,7 +753,7 @@ elif menu == "📚 구글 드라이브 지식 관리":
     col_left, col_right = st.columns([1, 1])
     
     with col_left:
-        api_key = st.session_state.get("gemini_api_key")
+        api_key = get_all_api_keys()
         
         # Section A: 구글 드라이브 연동 설정 카드
         with st.container(border=True):
@@ -863,11 +909,11 @@ elif menu == "📚 구글 드라이브 지식 관리":
                                             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                                                 future = executor.submit(process_single_task)
                                                 try:
-                                                    final_rel_p = future.result(timeout=5.0)
+                                                    final_rel_p = future.result(timeout=60.0)
                                                     mtime = st.session_state.sync_queue["drive_files_state"].get(rel_p, datetime.now().timestamp())
                                                     database.mark_file_indexed(final_rel_p, mtime)
                                                 except concurrent.futures.TimeoutError:
-                                                    st.warning(f"⚠️ `{rel_p}` 파일 처리가 5초 동안 응답이 없어 다음 파일로 건너뜁니다.")
+                                                    st.warning(f"⚠️ `{rel_p}` 파일 처리가 60초 동안 응답이 없어 다음 파일로 건너뜁니다.")
                                                 except Exception as parse_err:
                                                     st.error(f"오류 발생 ({rel_p}): {str(parse_err)}")
                                         
@@ -1127,35 +1173,37 @@ elif menu == "⚙️ 시스템 설정 및 가이드":
         st.write("입력하신 Gemini API Key를 통해 실제로 어떤 모델들을 사용할 수 있는지 실시간 목록을 조회합니다.")
         
         if st.button("🔌 API 연결 및 모델 리스트 검사", use_container_width=True, key="btn_api_diagnostic"):
-            api_key = st.session_state.get("gemini_api_key")
-            if not api_key:
+            api_keys = get_all_api_keys()
+            if not api_keys:
                 st.error("사이드바에 API Key를 먼저 입력해 주세요.")
             else:
-                with st.spinner("Gemini API에서 사용 가능한 모델 목록을 조회 중..."):
-                    try:
-                        import google.generativeai as genai
-                        genai.configure(api_key=api_key)
-                        models = list(genai.list_models())
-                        
-                        st.success("✅ API 연결 성공!")
-                        
-                        embed_models = []
-                        gen_models = []
-                        for m in models:
-                            if 'embedContent' in m.supported_generation_methods or 'embed_content' in m.supported_generation_methods:
-                                embed_models.append(m.name)
-                            else:
-                                gen_models.append(m.name)
-                                
-                        st.markdown("##### 🔹 임베딩 지원 모델 (Embedding Models):")
-                        if embed_models:
-                            for em in embed_models:
-                                st.markdown(f"- `{em}`")
-                        else:
-                            st.warning("⚠️ 임베딩을 지원하는 모델이 목록에 없습니다! 계정의 API 권한을 검토하세요.")
+                for idx, active_key in enumerate(api_keys):
+                    st.markdown(f"### 🔑 API Key #{idx+1} ({active_key[:6]}...{active_key[-4:] if len(active_key) > 10 else ''}) 진단 결과:")
+                    with st.spinner(f"Gemini API Key #{idx+1}에서 사용 가능한 모델 목록을 조회 중..."):
+                        try:
+                            import google.generativeai as genai
+                            genai.configure(api_key=active_key)
+                            models = list(genai.list_models())
                             
-                        with st.expander("🔹 전체 모델 리스트 보기", expanded=False):
+                            st.success(f"✅ API Key #{idx+1} 연결 성공!")
+                            
+                            embed_models = []
+                            gen_models = []
                             for m in models:
-                                st.markdown(f"- **{m.name}** (메서드: `{m.supported_generation_methods}`)")
-                    except Exception as e:
-                        st.error(f"❌ API 호출 실패: {str(e)}")
+                                if 'embedContent' in m.supported_generation_methods or 'embed_content' in m.supported_generation_methods:
+                                    embed_models.append(m.name)
+                                else:
+                                    gen_models.append(m.name)
+                                    
+                            st.markdown("##### 🔹 임베딩 지원 모델 (Embedding Models):")
+                            if embed_models:
+                                for em in embed_models:
+                                    st.markdown(f"- `{em}`")
+                            else:
+                                st.warning("⚠️ 임베딩을 지원하는 모델이 목록에 없습니다! 계정의 API 권한을 검토하세요.")
+                                
+                            with st.expander("🔹 전체 모델 리스트 보기", expanded=False):
+                                for m in models:
+                                    st.markdown(f"- **{m.name}** (메서드: `{m.supported_generation_methods}`)")
+                        except Exception as e:
+                            st.error(f"❌ API Key #{idx+1} 연결 실패: {str(e)}")
