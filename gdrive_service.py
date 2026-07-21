@@ -18,7 +18,10 @@ def get_gdrive_service(credentials_info: Dict[str, Any]):
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        raise RuntimeError(f"Google Drive API 인증 실패: {str(e)}")
+        pk_val = credentials_info.get("private_key", "None")
+        pk_len = len(pk_val) if isinstance(pk_val, str) else 0
+        pk_preview = repr(pk_val[:50]) if isinstance(pk_val, str) else "Not a string"
+        raise RuntimeError(f"Google Drive API 인증 실패: {str(e)} (Key len: {pk_len}, Preview: {pk_preview})")
 
 def list_files_in_folder(service, folder_id: str) -> List[Dict[str, Any]]:
     """Recursively lists all files in a specific Google Drive folder.
