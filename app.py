@@ -498,15 +498,17 @@ with st.sidebar:
         
     st.markdown("---")
 
-    # API Configuration (Only visible to admin)
+    # API Configuration
+    env_api_key = get_secret("GEMINI_API_KEY", "")
+    env_sub1 = get_secret("GEMINI_API_KEY_SUB1", "")
+    env_sub2 = get_secret("GEMINI_API_KEY_SUB2", "")
+    env_openai_key = get_secret("OPENAI_API_KEY", "")
+    env_anthropic_key = get_secret("ANTHROPIC_API_KEY", "")
+    
+    st.markdown("#### 🔑 API Key 설정")
+    
+    # Gemini API Keys (Only visible to admin)
     if st.session_state.role == "admin":
-        env_api_key = get_secret("GEMINI_API_KEY", "")
-        env_sub1 = get_secret("GEMINI_API_KEY_SUB1", "")
-        env_sub2 = get_secret("GEMINI_API_KEY_SUB2", "")
-        env_openai_key = get_secret("OPENAI_API_KEY", "")
-        env_anthropic_key = get_secret("ANTHROPIC_API_KEY", "")
-        
-        st.markdown("#### 🔑 API Key 설정")
         api_key_input = st.text_input(
             "Gemini API Key (기본):",
             type="password",
@@ -537,27 +539,28 @@ with st.sidebar:
         if api_key_sub2_input:
             st.session_state.gemini_api_key_sub2 = api_key_sub2_input
 
-        openai_key_input = st.text_input(
-            "OpenAI API Key (ChatGPT용):",
-            type="password",
-            value=st.session_state.get("openai_api_key", env_openai_key),
-            help="ChatGPT 모델(gpt-4o 등)을 사용할 때 필요한 OpenAI API Key를 입력하세요.",
-            key="gdrive_openai_api_key_input"
-        )
-        if openai_key_input:
-            st.session_state.openai_api_key = openai_key_input
-            
-        anthropic_key_input = st.text_input(
-            "Anthropic API Key (Claude용):",
-            type="password",
-            value=st.session_state.get("anthropic_api_key", env_anthropic_key),
-            help="Claude 모델(claude-3-5-sonnet 등)을 사용할 때 필요한 Anthropic API Key를 입력하세요.",
-            key="gdrive_anthropic_api_key_input"
-        )
-        if anthropic_key_input:
-            st.session_state.anthropic_api_key = anthropic_key_input
-            
-        st.markdown("---")
+    # OpenAI & Anthropic API Keys (Visible to all users to configure their own keys)
+    openai_key_input = st.text_input(
+        "OpenAI API Key (ChatGPT용):",
+        type="password",
+        value=st.session_state.get("openai_api_key", env_openai_key),
+        help="ChatGPT 모델(gpt-4o 등)을 사용할 때 필요한 OpenAI API Key를 입력하세요.",
+        key="gdrive_openai_api_key_input"
+    )
+    if openai_key_input:
+        st.session_state.openai_api_key = openai_key_input
+        
+    anthropic_key_input = st.text_input(
+        "Anthropic API Key (Claude용):",
+        type="password",
+        value=st.session_state.get("anthropic_api_key", env_anthropic_key),
+        help="Claude 모델(claude-3-5-sonnet 등)을 사용할 때 필요한 Anthropic API Key를 입력하세요.",
+        key="gdrive_anthropic_api_key_input"
+    )
+    if anthropic_key_input:
+        st.session_state.anthropic_api_key = anthropic_key_input
+        
+    st.markdown("---")
     
     # Model Configuration
     st.markdown("#### ⚙️ 추론 모델 설정")
