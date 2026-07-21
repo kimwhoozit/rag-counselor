@@ -96,6 +96,10 @@ if "gemini_api_key_sub1" not in st.session_state:
     st.session_state.gemini_api_key_sub1 = get_secret("GEMINI_API_KEY_SUB1", "")
 if "gemini_api_key_sub2" not in st.session_state:
     st.session_state.gemini_api_key_sub2 = get_secret("GEMINI_API_KEY_SUB2", "")
+if "openai_api_key" not in st.session_state:
+    st.session_state.openai_api_key = get_secret("OPENAI_API_KEY", "")
+if "anthropic_api_key" not in st.session_state:
+    st.session_state.anthropic_api_key = get_secret("ANTHROPIC_API_KEY", "")
 
 def get_all_api_keys():
     """Helper to return a list of active API keys in priority order."""
@@ -275,6 +279,8 @@ if not st.session_state.authenticated:
                     st.session_state.role = user_role
                     # 기본 API Key 백엔드에 강제 주입 (일반 사용자 RAG 질문/검색 실패 방지)
                     st.session_state.gemini_api_key = get_secret("GEMINI_API_KEY", "")
+                    st.session_state.openai_api_key = get_secret("OPENAI_API_KEY", "")
+                    st.session_state.anthropic_api_key = get_secret("ANTHROPIC_API_KEY", "")
                     st.success("로그인 성공!")
                     st.rerun()
                 else:
@@ -491,12 +497,14 @@ with st.sidebar:
         st.rerun()
         
     st.markdown("---")
-    
+
     # API Configuration (Only visible to admin)
     if st.session_state.role == "admin":
         env_api_key = get_secret("GEMINI_API_KEY", "")
         env_sub1 = get_secret("GEMINI_API_KEY_SUB1", "")
         env_sub2 = get_secret("GEMINI_API_KEY_SUB2", "")
+        env_openai_key = get_secret("OPENAI_API_KEY", "")
+        env_anthropic_key = get_secret("ANTHROPIC_API_KEY", "")
         
         st.markdown("#### 🔑 API Key 설정")
         api_key_input = st.text_input(
@@ -528,6 +536,26 @@ with st.sidebar:
         )
         if api_key_sub2_input:
             st.session_state.gemini_api_key_sub2 = api_key_sub2_input
+
+        openai_key_input = st.text_input(
+            "OpenAI API Key (ChatGPT용):",
+            type="password",
+            value=st.session_state.get("openai_api_key", env_openai_key),
+            help="ChatGPT 모델(gpt-4o 등)을 사용할 때 필요한 OpenAI API Key를 입력하세요.",
+            key="gdrive_openai_api_key_input"
+        )
+        if openai_key_input:
+            st.session_state.openai_api_key = openai_key_input
+            
+        anthropic_key_input = st.text_input(
+            "Anthropic API Key (Claude용):",
+            type="password",
+            value=st.session_state.get("anthropic_api_key", env_anthropic_key),
+            help="Claude 모델(claude-3-5-sonnet 등)을 사용할 때 필요한 Anthropic API Key를 입력하세요.",
+            key="gdrive_anthropic_api_key_input"
+        )
+        if anthropic_key_input:
+            st.session_state.anthropic_api_key = anthropic_key_input
             
         st.markdown("---")
     
@@ -535,7 +563,7 @@ with st.sidebar:
     st.markdown("#### ⚙️ 추론 모델 설정")
     selected_model = st.selectbox(
         "추론 LLM 모델 선택:",
-        options=["gemini-2.5-flash", "gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+        options=["gemini-2.5-flash", "gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet", "claude-3-5-haiku"],
         index=0,
         help="추론 성능과 속도에 맞는 모델을 선택합니다.",
         key="sb_model_selector"
@@ -592,6 +620,8 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
             key="main_page_web_search_toggle"
         )
         st.session_state.enable_search = enable_search
+        if enable_search and any(m in selected_model for m in ["gpt", "claude"]):
+            st.caption("ℹ️ **안내**: 실시간 웹 검색(Google Search) 연동은 Gemini 모델에서만 지원됩니다. 현재 모델로 답변을 생성하나 웹 검색은 생략됩니다.")
     with c_reset:
         if st.button("🧹 대화 기록 리셋", use_container_width=True, key="btn_reset_chat_main"):
             database.clear_chat_history(st.session_state.session_id)
@@ -618,7 +648,17 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                     # 1. API key checks
                     api_keys = get_all_api_keys()
                     if not api_keys:
-                        st.error("API Key가 누락되었습니다. 왼쪽 상단 ⚙️ 설정에서 API Key를 설정해 주세요.")
+                        st.error("Gemini API Key가 누락되었습니다. 임베딩(지식베이스 검색) 및 기본 작동을 위해 Gemini API Key가 기본적으로 필요합니다. 왼쪽 상단 ⚙️ 설정에서 API Key를 설정해 주세요.")
+                        st.stop()
+                        
+                    openai_api_key = st.session_state.get("openai_api_key", "").strip() or get_secret("OPENAI_API_KEY", "")
+                    anthropic_api_key = st.session_state.get("anthropic_api_key", "").strip() or get_secret("ANTHROPIC_API_KEY", "")
+                    
+                    if selected_model.startswith("gpt-") and not openai_api_key:
+                        st.error("OpenAI API Key가 누락되었습니다. 왼쪽 상단 ⚙️ 설정에서 OpenAI API Key를 입력해 주세요.")
+                        st.stop()
+                    elif selected_model.startswith("claude-") and not anthropic_api_key:
+                        st.error("Anthropic API Key가 누락되었습니다. 왼쪽 상단 ⚙️ 설정에서 Anthropic API Key를 입력해 주세요.")
                         st.stop()
                         
                     # 2. Vector DB search (generate query embedding first)
@@ -632,6 +672,8 @@ if menu == "💬 서류 검토 및 상담 (RAG)":
                         retrieved_docs=retrieved_docs,
                         chat_history=st.session_state.messages[:-1], # pass previous history
                         api_key=api_keys,
+                        openai_api_key=openai_api_key,
+                        anthropic_api_key=anthropic_api_key,
                         enable_search=enable_search,
                         model_name=selected_model
                     )

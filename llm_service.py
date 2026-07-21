@@ -178,16 +178,15 @@ def generate_answer(
     retrieved_docs: List[Dict[str, Any]], 
     chat_history: List[Dict[str, Any]], 
     api_key, 
+    openai_api_key: str = None,
+    anthropic_api_key: str = None,
     enable_search: bool = False,
     model_name: str = "gemini-2.0-flash"
 ) -> Dict[str, Any]:
-    """Generates an answer using the Gemini API.
-    Supports API key rotation when encountering rate/quota limit errors.
+    """Generates an answer using either the Gemini API, OpenAI API, or Anthropic API.
+    Supports API key rotation when encountering rate/quota limit errors (Gemini-only).
     """
-    keys = get_working_keys(api_key)
-    if not keys:
-        raise ValueError("API Key가 설정되어 있지 않습니다.")
-        
+    
     # 1. Build Document Context
     doc_context_parts = []
     qa_context_parts = []
@@ -253,6 +252,65 @@ def generate_answer(
 사용자: {query}
 AI 상담사:
 """
+
+    # 4. Check model type and call the respective API
+    if model_name.startswith("gpt-"):
+        if not openai_api_key or not openai_api_key.strip():
+            raise ValueError("OpenAI API Key가 설정되어 있지 않습니다.")
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError("openai 패키지가 설치되어 있지 않습니다. pip install openai를 실행해주세요.")
+        
+        client = OpenAI(api_key=openai_api_key.strip())
+        messages = [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            temperature=0.2
+        )
+        return {
+            "answer": response.choices[0].message.content,
+            "sources": []
+        }
+        
+    elif model_name.startswith("claude-"):
+        if not anthropic_api_key or not anthropic_api_key.strip():
+            raise ValueError("Anthropic API Key가 설정되어 있지 않습니다.")
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            raise ImportError("anthropic 패키지가 설치되어 있지 않습니다. pip install anthropic를 실행해주세요.")
+            
+        actual_model = model_name
+        if "claude-3-5-sonnet" in model_name:
+            actual_model = "claude-3-5-sonnet-20241022"
+        elif "claude-3-5-haiku" in model_name:
+            actual_model = "claude-3-5-haiku-20241022"
+            
+        client = Anthropic(api_key=anthropic_api_key.strip())
+        response = client.messages.create(
+            model=actual_model,
+            max_tokens=4096,
+            system=system_instruction,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        return {
+            "answer": response.content[0].text,
+            "sources": []
+        }
+
+    # 5. Gemini API generation (with key rotation and candidate model fallback)
+    keys = get_working_keys(api_key)
+    if not keys:
+        raise ValueError("API Key가 설정되어 있지 않습니다.")
 
     # Attempt to initialize and generate content with dynamic fallbacks
     candidates = [
