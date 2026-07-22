@@ -5,10 +5,15 @@ import pandas as pd
 import tempfile
 import shutil
 from datetime import datetime
+import importlib
 import database
+importlib.reload(database)
 import llm_service
+importlib.reload(llm_service)
 import utils
+importlib.reload(utils)
 import gdrive_service
+importlib.reload(gdrive_service)
 
 # 1. Page Configuration & Theme
 st.set_page_config(
