@@ -5,80 +5,148 @@ import docx
 from pypdf import PdfReader
 import olefile
 
-def parse_file(file_path: str) -> str:
+def extract_text_via_gemini(file_path: str, api_key) -> str:
+    """Uploads a file to Gemini API to extract its text content using multimodal capabilities."""
+    import google.generativeai as genai
+    from llm_service import get_working_keys
+    
+    keys = get_working_keys(api_key)
+    if not keys:
+        raise ValueError("Gemini API Key가 설정되어 있지 않아 OCR Fallback을 수행할 수 없습니다.")
+    
+    # Configure with the first working key
+    genai.configure(api_key=keys[0])
+    
+    try:
+        uploaded_file = genai.upload_file(path=file_path)
+    except Exception as upload_err:
+        raise RuntimeError(f"Gemini API 파일 임시 업로드 실패: {str(upload_err)}")
+        
+    try:
+        # Prompt model to extract all text
+        # gemini-1.5-flash is stable and supports PDF/Image/Office document uploads
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        prompt = (
+            "이 문서 파일의 모든 텍스트 내용을 한 글자도 빠짐없이 있는 그대로 추출해 주세요.\n"
+            "요약하거나 설명하지 말고, 오직 문서 안의 텍스트 본문만 출력해야 합니다."
+        )
+        
+        response = model.generate_content([uploaded_file, prompt])
+        text = response.text
+        if not text or not text.strip():
+            raise ValueError("Gemini OCR에서 반환된 텍스트가 비어 있습니다.")
+        return text
+    finally:
+        # Clean up the file from Gemini storage immediately
+        try:
+            genai.delete_file(uploaded_file.name)
+        except Exception:
+            pass
+
+def parse_file(file_path: str, api_key = None) -> str:
     """Reads various file types and returns their text contents.
     Supports .txt, .md, .docx, .xlsx, .xls, and .pdf files.
     """
+    import os
+    from typing import Any
     ext = os.path.splitext(file_path)[1].lower()
     
-    if ext in ['.txt', '.md']:
-        # Try multiple encodings for Korean Windows environments
-        encodings = ['utf-8', 'cp949', 'euc-kr', 'utf-16', 'latin-1']
-        for enc in encodings:
-            try:
-                with open(file_path, 'r', encoding=enc) as f:
-                    return f.read()
-            except UnicodeDecodeError:
-                continue
-        raise ValueError(f"Could not decode the text file {file_path} with standard encodings.")
-        
-    elif ext == '.docx':
-        doc = docx.Document(file_path)
-        full_text = []
-        for para in doc.paragraphs:
-            if para.text.strip():
-                full_text.append(para.text)
-        
-        # Include table contents
-        for table in doc.tables:
-            for row in table.rows:
-                row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                if row_text:
-                    full_text.append(" | ".join(row_text))
-        return '\n'.join(full_text)
-        
-    elif ext in ['.xlsx', '.xls']:
-        try:
-            excel_data = pd.read_excel(file_path, sheet_name=None)
-            full_text = []
-            for sheet_name, df in excel_data.items():
-                # Drop rows that are completely empty to save space
-                df_cleaned = df.dropna(how='all')
-                if not df_cleaned.empty:
-                    full_text.append(f"--- Sheet: {sheet_name} ---")
-                    # Convert to CSV format: much more compact than df.to_string() 
-                    # and extremely easy for LLMs to understand without padding overhead.
-                    full_text.append(df_cleaned.to_csv(index=False))
-            return '\n'.join(full_text)
-        except Exception as e:
-            raise ValueError(f"Failed to read Excel file: {str(e)}")
+    try:
+        if ext in ['.txt', '.md']:
+            # Try multiple encodings for Korean Windows environments
+            encodings = ['utf-8', 'cp949', 'euc-kr', 'utf-16', 'latin-1']
+            for enc in encodings:
+                try:
+                    with open(file_path, 'r', encoding=enc) as f:
+                        return f.read()
+                except UnicodeDecodeError:
+                    continue
+            raise ValueError(f"Could not decode the text file {file_path} with standard encodings.")
             
-    elif ext == '.pdf':
-        try:
+        elif ext == '.docx':
+            doc = docx.Document(file_path)
+            full_text = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    full_text.append(para.text)
+            
+            # Include table contents
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if row_text:
+                        full_text.append(" | ".join(row_text))
+            parsed = '\n'.join(full_text)
+            
+            if (not parsed.strip() or len(parsed.strip()) < 100) and api_key:
+                try:
+                    return extract_text_via_gemini(file_path, api_key)
+                except Exception:
+                    pass
+            return parsed
+            
+        elif ext in ['.xlsx', '.xls']:
+            try:
+                excel_data = pd.read_excel(file_path, sheet_name=None)
+                full_text = []
+                for sheet_name, df in excel_data.items():
+                    # Drop rows that are completely empty to save space
+                    df_cleaned = df.dropna(how='all')
+                    if not df_cleaned.empty:
+                        full_text.append(f"--- Sheet: {sheet_name} ---")
+                        # Convert to CSV format: much more compact than df.to_string() 
+                        # and extremely easy for LLMs to understand without padding overhead.
+                        full_text.append(df_cleaned.to_csv(index=False))
+                return '\n'.join(full_text)
+            except Exception as e:
+                raise ValueError(f"Failed to read Excel file: {str(e)}")
+                
+        elif ext == '.pdf':
             reader = PdfReader(file_path)
             full_text = []
-            for i, page in enumerate(reader.pages):
+            for page in reader.pages:
                 text = page.extract_text()
                 if text:
                     full_text.append(text)
-            return '\n'.join(full_text)
-        except Exception as e:
-            raise ValueError(f"Failed to read PDF file: {str(e)}")
+            parsed = '\n'.join(full_text)
             
-    elif ext == '.hwpx':
-        try:
-            return extract_hwpx_text(file_path)
-        except Exception as e:
-            raise ValueError(f"Failed to read HWPX file: {str(e)}")
+            if (not parsed.strip() or len(parsed.strip()) < 100) and api_key:
+                try:
+                    return extract_text_via_gemini(file_path, api_key)
+                except Exception as ocr_err:
+                    if parsed.strip():
+                        return parsed
+                    raise ValueError(f"PDF에서 디지털 텍스트 추출 결과가 비어 있어 Gemini OCR을 시도했으나 실패했습니다: {str(ocr_err)}")
+            return parsed
             
-    elif ext == '.hwp':
-        try:
-            return extract_hwp_text(file_path)
-        except Exception as e:
-            raise ValueError(f"Failed to read HWP file: {str(e)}")
+        elif ext == '.hwpx':
+            parsed = extract_hwpx_text(file_path)
+            if (not parsed.strip() or len(parsed.strip()) < 100) and api_key:
+                try:
+                    return extract_text_via_gemini(file_path, api_key)
+                except Exception:
+                    pass
+            return parsed
             
-    else:
-        raise ValueError(f"Unsupported file format: {ext}")
+        elif ext == '.hwp':
+            parsed = extract_hwp_text(file_path)
+            if (not parsed.strip() or len(parsed.strip()) < 100) and api_key:
+                try:
+                    return extract_text_via_gemini(file_path, api_key)
+                except Exception:
+                    pass
+            return parsed
+            
+        else:
+            raise ValueError(f"Unsupported file format: {ext}")
+            
+    except Exception as main_err:
+        if api_key and ext in ['.pdf', '.docx', '.xlsx', '.xls']:
+            try:
+                return extract_text_via_gemini(file_path, api_key)
+            except Exception as ocr_err:
+                raise ValueError(f"문서 기본 파싱 실패 및 Gemini OCR 실패: {str(main_err)} / OCR 오류: {str(ocr_err)}")
+        raise main_err
 
 def extract_hwpx_text(file_path: str) -> str:
     """Extracts text from HWPX (Hancom Office HWPX) files by unzipping 

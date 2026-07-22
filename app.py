@@ -392,8 +392,10 @@ def sync_documents(api_key, added, modified, deleted, local_files):
         
         full_path = os.path.join(DOCS_DIR, rel_path)
         try:
-            content = utils.parse_file(full_path)
+            content = utils.parse_file(full_path, api_key)
             chunks = utils.split_text(content)
+            if not chunks:
+                raise ValueError("파싱된 텍스트 내용이 비어 있습니다. (스캔 문서이거나 파싱 불가능한 형식)")
             embeddings = llm_service.get_embeddings_batch(chunks, api_key)
             
             for c_idx, chunk in enumerate(chunks):
@@ -408,6 +410,8 @@ def sync_documents(api_key, added, modified, deleted, local_files):
             database.mark_file_indexed(rel_path, mtime)
         except Exception as e:
             st.error(f"오류 발생 ({rel_path}): {str(e)}")
+            if "sync_errors" in st.session_state:
+                st.session_state.sync_errors.append({"file": rel_path, "error": str(e)})
             
         current_step += 1
         progress_bar.progress(current_step / total_steps)
@@ -417,8 +421,10 @@ def sync_documents(api_key, added, modified, deleted, local_files):
         status_text.write(f"⚙️ `{rel_path}` 신규 임베딩 분석 중...")
         full_path = os.path.join(DOCS_DIR, rel_path)
         try:
-            content = utils.parse_file(full_path)
+            content = utils.parse_file(full_path, api_key)
             chunks = utils.split_text(content)
+            if not chunks:
+                raise ValueError("파싱된 텍스트 내용이 비어 있습니다. (스캔 문서이거나 파싱 불가능한 형식)")
             embeddings = llm_service.get_embeddings_batch(chunks, api_key)
             
             for c_idx, chunk in enumerate(chunks):
@@ -433,6 +439,8 @@ def sync_documents(api_key, added, modified, deleted, local_files):
             database.mark_file_indexed(rel_path, mtime)
         except Exception as e:
             st.error(f"오류 발생 ({rel_path}): {str(e)}")
+            if "sync_errors" in st.session_state:
+                st.session_state.sync_errors.append({"file": rel_path, "error": str(e)})
             
         current_step += 1
         progress_bar.progress(current_step / total_steps)
@@ -443,10 +451,10 @@ def sync_documents(api_key, added, modified, deleted, local_files):
 
 def parse_and_embed_single_file(api_key, file_path, rel_path):
     """Parses a single file and adds it to the database with its embedding chunks."""
-    content = utils.parse_file(file_path)
+    content = utils.parse_file(file_path, api_key)
     chunks = utils.split_text(content)
     if not chunks:
-        return
+        raise ValueError("파싱된 텍스트 내용이 비어 있습니다. (스캔 문서이거나 파싱 불가능한 형식)")
     embeddings = llm_service.get_embeddings_batch(chunks, api_key)
     for c_idx, chunk in enumerate(chunks):
         database.add_document(
@@ -474,6 +482,8 @@ if "last_response" not in st.session_state:
     st.session_state.last_response = None
 if "session_id" not in st.session_state:
     st.session_state.session_id = f"session_{st.session_state.username}"
+if "sync_errors" not in st.session_state:
+    st.session_state.sync_errors = []
 
 # Reload past chat messages from DB into Session State if empty
 if not st.session_state.messages:
@@ -507,7 +517,7 @@ with st.sidebar:
     
     st.markdown("#### 🔑 API Key 설정")
     
-    # Gemini API Keys (Only visible to admin)
+    # Gemini API Keys (Only basic is restricted to admin, sub keys are visible to all)
     if st.session_state.role == "admin":
         api_key_input = st.text_input(
             "Gemini API Key (기본):",
@@ -519,25 +529,25 @@ with st.sidebar:
         if api_key_input:
             st.session_state.gemini_api_key = api_key_input
             
-        api_key_sub1_input = st.text_input(
-            "Gemini API Key (보조 1):",
-            type="password",
-            value=st.session_state.get("gemini_api_key_sub1", env_sub1),
-            help="기본 키 할당량 초과 시 사용할 첫 번째 보조 API Key입니다.",
-            key="gdrive_api_key_sub1_input"
-        )
-        if api_key_sub1_input:
-            st.session_state.gemini_api_key_sub1 = api_key_sub1_input
-            
-        api_key_sub2_input = st.text_input(
-            "Gemini API Key (보조 2):",
-            type="password",
-            value=st.session_state.get("gemini_api_key_sub2", env_sub2),
-            help="첫 번째 보조 키까지 초과 시 사용할 두 번째 보조 API Key입니다.",
-            key="gdrive_api_key_sub2_input"
-        )
-        if api_key_sub2_input:
-            st.session_state.gemini_api_key_sub2 = api_key_sub2_input
+    api_key_sub1_input = st.text_input(
+        "Gemini API Key (보조 1):",
+        type="password",
+        value=st.session_state.get("gemini_api_key_sub1", env_sub1),
+        help="기본 키 할당량 초과 시 사용할 첫 번째 보조 API Key입니다.",
+        key="gdrive_api_key_sub1_input"
+    )
+    if api_key_sub1_input:
+        st.session_state.gemini_api_key_sub1 = api_key_sub1_input
+        
+    api_key_sub2_input = st.text_input(
+        "Gemini API Key (보조 2):",
+        type="password",
+        value=st.session_state.get("gemini_api_key_sub2", env_sub2),
+        help="첫 번째 보조 키까지 초과 시 사용할 두 번째 보조 API Key입니다.",
+        key="gdrive_api_key_sub2_input"
+    )
+    if api_key_sub2_input:
+        st.session_state.gemini_api_key_sub2 = api_key_sub2_input
 
     # OpenAI & Anthropic API Keys (Visible to all users to configure their own keys)
     openai_key_input = st.text_input(
@@ -994,13 +1004,21 @@ elif menu == "📚 구글 드라이브 지식 관리":
                                             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                                                 future = executor.submit(process_single_task)
                                                 try:
-                                                    final_rel_p = future.result(timeout=60.0)
+                                                    final_rel_p = future.result(timeout=300.0)
                                                     mtime = st.session_state.sync_queue["drive_files_state"].get(rel_p, datetime.now().timestamp())
                                                     database.mark_file_indexed(final_rel_p, mtime)
                                                 except concurrent.futures.TimeoutError:
-                                                    st.warning(f"⚠️ `{rel_p}` 파일 처리가 60초 동안 응답이 없어 다음 파일로 건너뜁니다.")
+                                                    st.warning(f"⚠️ `{rel_p}` 파일 처리가 300초 동안 응답이 없어 다음 파일로 건너뜁니다.")
+                                                    st.session_state.sync_errors.append({
+                                                        "file": rel_p,
+                                                        "error": "300초 타임아웃 초과 (대용량 문서 혹은 API 지연)"
+                                                    })
                                                 except Exception as parse_err:
                                                     st.error(f"오류 발생 ({rel_p}): {str(parse_err)}")
+                                                    st.session_state.sync_errors.append({
+                                                        "file": rel_p,
+                                                        "error": str(parse_err)
+                                                    })
                                         
                                         progress_sync.progress((b_idx + 1) / len(batch_tasks))
                                         
@@ -1077,11 +1095,31 @@ elif menu == "📚 구글 드라이브 지식 관리":
                                         }
                                         st.session_state.sync_index = 0
                                         st.session_state.sync_active = True
+                                        st.session_state.sync_errors = []
                                         st.rerun()
                                     else:
                                         st.success("✅ 구글 드라이브와 로컬 데이터베이스의 동기화 상태가 완벽히 일치합니다.")
                                 except Exception as e:
                                     st.error(f"구글 드라이브 동기화 도중 오류 발생: {str(e)}")
+                                    
+                    # 동기화 오류 발생 현황 표시
+                    if st.session_state.get("sync_errors"):
+                        st.markdown("---")
+                        st.markdown("##### ❌ 인베딩 실패 문서 현황")
+                        st.warning("아래 파일들은 인베딩 과정에서 누락되었습니다. 사유를 확인 후 조치해 주세요.")
+                        err_df = pd.DataFrame(st.session_state.sync_errors)
+                        st.dataframe(
+                            err_df,
+                            column_config={
+                                "file": "파일명 (경로)",
+                                "error": "실패 사유"
+                            },
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        if st.button("🧹 실패 기록 지우기", use_container_width=True, key="btn_clear_sync_errors"):
+                            st.session_state.sync_errors = []
+                            st.rerun()
         else:
             st.warning("⚠️ 구글 서비스 계정 키(.json) 등록 및 드라이브 폴더 ID 입력이 완료되어야 동기화를 진행할 수 있습니다.")
                 
